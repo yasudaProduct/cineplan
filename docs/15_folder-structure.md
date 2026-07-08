@@ -3,6 +3,7 @@
 - Version: 0.1
 - 関連: `CLAUDE.md`（コマンド・制約）/ `09_roadmap.md`（P0-1 で実際に作る）/ `14_environments-deploy.md`（Compose / Actions）
 - **本ドキュメントが構成の正とする。** 実装時に追加が必要なファイルは追加してよいが、削除・移動・命名変更は本書を先に更新してから行う。
+- 実リポジトリのディレクトリ名は `cineplan`（GitHub: `yasudaProduct/cineplan`）。ツリー先頭の `cinema-hashigo/` は論理名であり、ルートディレクトリ名の変更は不要。
 
 ## ツリー
 
@@ -145,7 +146,8 @@ cinema-hashigo/                          # リポジトリルート
 │   ├── 12_dp-implementation.md          │ （期待値テスト含む）
 │   ├── 13_claude-code-kickoff.md        │ Claude Code 起動プロンプト
 │   ├── 14_environments-deploy.md        │ 環境・Compose・Actions
-│   └── 15_folder-structure.md         ─┘ 本ドキュメント
+│   ├── 15_folder-structure.md           │ 本ドキュメント
+│   └── 16_human-setup-guide.md        ─┘ 人間（オーナー）作業手順
 │
 └── .github/
     └── workflows/

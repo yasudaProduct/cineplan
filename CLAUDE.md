@@ -38,6 +38,8 @@ Claude Code はこのプロジェクトで作業する前に本ファイルを�
 | 12 | DP 実装詳細（参照実装・検算済み期待値） |
 | 13 | Claude Code 起動プロンプト |
 | 14 | 環境構成（local/st/prod）・Docker Compose・GitHub Actions |
+| 15 | リポジトリフォルダ構成（ツリー・パッケージ依存） |
+| 16 | 人間セットアップ・運用ガイド（オーナー作業手順。**人間作業が前提のタスクは代行せず依頼する**） |
 
 ## 作業の進め方
 
@@ -73,9 +75,9 @@ compose.yaml
 ```
 pnpm install
 docker compose up -d minio transit-stub slack-stub   # ローカル補助（必要分のみ）
-pnpm -F @app/api dev          # コアAPI ローカル起動 (wrangler dev)
-pnpm -F @app/ingest dev
-pnpm -F @app/web dev
+pnpm -F @cinema/api dev          # コアAPI ローカル起動 (wrangler dev)
+pnpm -F @cinema/ingest dev
+pnpm -F @cinema/web dev
 pnpm test                     # 全パッケージのテスト（DP期待値含む）
 pnpm typecheck && pnpm lint
 wrangler d1 migrations apply cinema_hashigo --local          # local
