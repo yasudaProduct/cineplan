@@ -1,0 +1,387 @@
+# D1 実装詳細 — マイグレーション・クエリ・アクセス層
+
+- Version: 0.1
+- 親ドキュメント: `03_data-model.md`（論理設計）。本書はその実装レベル詳細。
+- 対象: `packages/ingest`（書込）/ `packages/api`（読取）/ マイグレーション。
+
+## 1. マイグレーション運用
+
+- ツール: `wrangler d1 migrations`。ファイルは `migrations/NNNN_description.sql`（連番）。
+- 各マイグレーションは前方のみ（ロールバックは新規マイグレーションで対応）。
+- ローカル: `wrangler d1 migrations apply cinema_hashigo --local`
+- 本番: `wrangler d1 migrations apply cinema_hashigo --remote`
+- D1 は SQLite。外部キーは `PRAGMA foreign_keys=ON` が必要だが、D1 は接続ごとに OFF がデフォルト。**アプリ側で整合性を担保し、FK 制約は宣言のみ（ドキュメント目的）とする**。実削除は洗い替え（DELETE→INSERT）で行うため FK カスケードに依存しない。
+
+### 0001_init.sql
+
+```sql
+-- 劇場マスタ
+CREATE TABLE theaters (
+  id                TEXT PRIMARY KEY,
+  name              TEXT NOT NULL,
+  short_name        TEXT,
+  status            TEXT NOT NULL DEFAULT 'active',
+  lat               REAL NOT NULL,
+  lng               REAL NOT NULL,
+  nearest_station   TEXT NOT NULL,
+  walk_min_from_sta INTEGER NOT NULL DEFAULT 5,
+  schedule_url      TEXT NOT NULL,
+  fetch_method      TEXT NOT NULL DEFAULT 'static',
+  official_url      TEXT NOT NULL,
+  terms_note        TEXT,
+  terms_checked_at  TEXT,
+  robots_status     TEXT NOT NULL DEFAULT 'unknown',
+  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  CHECK (status IN ('active','paused','retired')),
+  CHECK (fetch_method IN ('static','rendered')),
+  CHECK (robots_status IN ('allowed','disallowed','unknown'))
+);
+
+CREATE TABLE movies (
+  id            TEXT PRIMARY KEY,
+  title         TEXT NOT NULL,
+  title_key     TEXT NOT NULL,
+  runtime_min   INTEGER,
+  official_site TEXT,
+  first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (title_key)
+);
+
+CREATE TABLE ingest_runs (
+  id              TEXT PRIMARY KEY,
+  theater_id      TEXT NOT NULL REFERENCES theaters(id),
+  business_date   TEXT NOT NULL,
+  trigger         TEXT NOT NULL,
+  status          TEXT NOT NULL,
+  snapshot_key    TEXT,
+  extracted_count INTEGER,
+  written_count   INTEGER,
+  error_message   TEXT,
+  llm_model       TEXT,
+  llm_in_tokens   INTEGER,
+  llm_out_tokens  INTEGER,
+  prompt_version  TEXT,
+  started_at      TEXT NOT NULL,
+  finished_at     TEXT,
+  CHECK (trigger IN ('cron','manual','retry')),
+  CHECK (status IN ('queued','fetching','extracting','succeeded',
+                    'validation_failed','fetch_failed','extraction_failed'))
+);
+CREATE INDEX idx_ingest_runs_list ON ingest_runs (theater_id, started_at DESC);
+CREATE INDEX idx_ingest_runs_status ON ingest_runs (status, started_at DESC);
+
+CREATE TABLE screenings (
+  id             TEXT PRIMARY KEY,
+  theater_id     TEXT NOT NULL REFERENCES theaters(id),
+  movie_id       TEXT NOT NULL REFERENCES movies(id),
+  business_date  TEXT NOT NULL,
+  start_at       TEXT NOT NULL,
+  end_at         TEXT NOT NULL,
+  end_at_source  TEXT NOT NULL DEFAULT 'site',
+  format         TEXT,
+  detail_url     TEXT,
+  ingest_run_id  TEXT NOT NULL REFERENCES ingest_runs(id),
+  created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (theater_id, business_date, movie_id, start_at),
+  CHECK (end_at_source IN ('site','estimated'))
+);
+CREATE INDEX idx_screenings_lookup ON screenings (business_date, theater_id, start_at);
+CREATE INDEX idx_screenings_movie ON screenings (business_date, movie_id);
+
+CREATE TABLE extraction_reviews (
+  id             TEXT PRIMARY KEY,
+  ingest_run_id  TEXT NOT NULL REFERENCES ingest_runs(id),
+  status         TEXT NOT NULL DEFAULT 'pending',
+  reason         TEXT NOT NULL,
+  payload_json   TEXT NOT NULL,
+  reviewed_at    TEXT,
+  created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  CHECK (status IN ('pending','approved','rejected'))
+);
+CREATE INDEX idx_reviews_pending ON extraction_reviews (status, created_at DESC);
+
+CREATE TABLE shared_plans (
+  id          TEXT PRIMARY KEY,
+  plan_json   TEXT NOT NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at  TEXT NOT NULL
+);
+CREATE INDEX idx_shared_plans_expiry ON shared_plans (expires_at);
+```
+
+### 0002_seed_dev.sql（ローカル専用・本番適用しない）
+
+```sql
+INSERT INTO theaters (id,name,short_name,status,lat,lng,nearest_station,
+  walk_min_from_sta,schedule_url,fetch_method,official_url,
+  terms_note,terms_checked_at,robots_status)
+VALUES
+('thr_dev01','開発用劇場A','劇場A','active',34.7025,135.4959,'大阪',
+  5,'https://example.com/theater-a/schedule?date={date}','static',
+  'https://example.com/theater-a',
+  'robots.txt allow確認済/規約にスクレイピング禁止記載なし','2026-07-07T00:00:00Z','allowed');
+```
+
+## 2. ID 生成
+
+- 形式: `{prefix}_{base58(12桁)}`。プレフィックスは `02_glossary.md` 準拠（thr/mov/scr/pln/run/rev）。
+- 実装（shared）:
+
+```ts
+import { customAlphabet } from 'nanoid';
+const b58 = customAlphabet('123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz', 12);
+export const newId = (p: 'thr'|'mov'|'scr'|'pln'|'run'|'rev') => `${p}_${b58()}`;
+```
+
+- `shared_plans.id`（pln）は共有 URL に載るため、推測困難性が重要。12桁 base58 ≒ 70bit で十分。
+
+## 3. 時刻の扱い（実装規約）
+
+- DB 保存: **ISO 8601 UTC 文字列**（例 `2026-07-12T01:30:00Z`）。SQLite の datetime 関数と比較互換にするため `Z` 付き ISO を一貫使用。
+- `business_date`: JST の `YYYY-MM-DD` 文字列。興行日（レイトショーで日付跨ぎでも変えない）。
+- 変換ヘルパ（shared）:
+
+```ts
+// JST 実時刻 → business_date（05:00 JST 未満は前日扱い）
+export function toBusinessDate(startUtc: string): string {
+  const jst = new Date(new Date(startUtc).getTime() + 9*3600*1000);
+  const h = jst.getUTCHours();
+  const d = new Date(jst);
+  if (h < 5) d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0,10);
+}
+// "25:10" + business_date(JST) → UTC ISO
+export function normalizeStart(businessDate: string, hhmm: string): string {
+  let [h,m] = hhmm.split(':').map(Number);
+  let addDay = 0;
+  if (h >= 24) { h -= 24; addDay = 1; }
+  const jst = new Date(`${businessDate}T00:00:00+09:00`);
+  jst.setHours(jst.getHours() + h + addDay*24, m);
+  return jst.toISOString(); // UTC Z
+}
+```
+
+## 4. アクセス層 — 書込（ingest）
+
+### 4.1 洗い替え書込（中核）
+
+同一 `(theater_id, business_date)` を DELETE してから INSERT する。D1 は `batch()` で複数文をまとめて実行する（トランザクション的にアトミック）。
+
+```ts
+export async function replaceScreenings(
+  db: D1Database,
+  theaterId: string,
+  businessDate: string,
+  runId: string,
+  rows: NormalizedScreening[]   // movie_id 解決済み・UTC 化済み
+): Promise<number> {
+  const stmts: D1PreparedStatement[] = [];
+  stmts.push(
+    db.prepare(`DELETE FROM screenings WHERE theater_id = ? AND business_date = ?`)
+      .bind(theaterId, businessDate)
+  );
+  for (const r of rows) {
+    stmts.push(
+      db.prepare(
+        `INSERT INTO screenings
+           (id, theater_id, movie_id, business_date, start_at, end_at,
+            end_at_source, format, detail_url, ingest_run_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`
+      ).bind(
+        newId('scr'), theaterId, r.movieId, businessDate,
+        r.startAt, r.endAt, r.endAtSource, r.format ?? null,
+        r.detailUrl ?? null, runId
+      )
+    );
+  }
+  await db.batch(stmts);   // 全文まとめて実行
+  return rows.length;
+}
+```
+
+**注意**: この関数は「通常取込」と「レビュー承認時の反映」の両方から呼ぶ。反映ロジックを二重実装しない（03 §7）。
+
+### 4.2 movie 名寄せ（UPSERT）
+
+```ts
+export async function resolveMovieId(
+  db: D1Database, title: string, runtimeMin: number|null
+): Promise<string> {
+  const key = titleKey(title);   // 正規化 → 03 §6 / 06 §6
+  const found = await db.prepare(
+    `SELECT id FROM movies WHERE title_key = ?`
+  ).bind(key).first<{id:string}>();
+  if (found) return found.id;
+  const id = newId('mov');
+  await db.prepare(
+    `INSERT INTO movies (id, title, title_key, runtime_min)
+     VALUES (?,?,?,?)
+     ON CONFLICT(title_key) DO NOTHING`
+  ).bind(id, title, key, runtimeMin).run();
+  // 競合時は既存を取り直す
+  const row = await db.prepare(`SELECT id FROM movies WHERE title_key = ?`)
+    .bind(key).first<{id:string}>();
+  return row!.id;
+}
+
+export function titleKey(t: string): string {
+  return t
+    .normalize('NFKC')                    // 全半角統一
+    .replace(/[\s!?！？・:：\-─【】()（）「」『』]/g, '')
+    .toLowerCase();
+}
+```
+
+### 4.3 IngestRun のライフサイクル更新
+
+```ts
+// 開始
+await db.prepare(
+  `INSERT INTO ingest_runs (id,theater_id,business_date,trigger,status,started_at)
+   VALUES (?,?,?,?,'fetching',?)`
+).bind(runId, theaterId, businessDate, trigger, nowIso()).run();
+
+// 進行（例: 抽出へ）
+await db.prepare(`UPDATE ingest_runs SET status=? WHERE id=?`)
+  .bind('extracting', runId).run();
+
+// 完了
+await db.prepare(
+  `UPDATE ingest_runs
+     SET status=?, snapshot_key=?, extracted_count=?, written_count=?,
+         llm_model=?, llm_in_tokens=?, llm_out_tokens=?, prompt_version=?,
+         finished_at=?
+   WHERE id=?`
+).bind('succeeded', snapshotKey, extracted, written,
+       model, inTok, outTok, promptVer, nowIso(), runId).run();
+```
+
+## 5. アクセス層 — 読取（api）
+
+### 5.1 planner 用: 対象日の候補 Screening ロード
+
+active 劇場のみ、必要列を JOIN で一括取得。
+
+```ts
+export async function loadCandidates(
+  db: D1Database, businessDate: string
+): Promise<CandidateScreening[]> {
+  const { results } = await db.prepare(
+    `SELECT s.id            AS screeningId,
+            s.theater_id    AS theaterId,
+            s.movie_id      AS movieId,
+            s.start_at      AS startAt,
+            s.end_at        AS endAt,
+            s.format        AS format,
+            s.detail_url    AS detailUrl,
+            m.title         AS movieTitle,
+            t.name          AS theaterName,
+            t.official_url  AS officialUrl
+       FROM screenings s
+       JOIN theaters t ON t.id = s.theater_id
+       JOIN movies   m ON m.id = s.movie_id
+      WHERE s.business_date = ?
+        AND t.status = 'active'
+      ORDER BY s.start_at ASC`
+  ).bind(businessDate).all<CandidateScreening>();
+  return results;
+}
+```
+
+- planner はこの配列（通常 ≤ 1,500件）をメモリに載せて DP する。D1 への追加クエリは行わない。
+- `detail_url` があれば ScreeningLeg.officialUrl に優先使用、なければ theater.official_url。
+
+### 5.2 `/movies`（上映時刻を返さない）
+
+```sql
+SELECT DISTINCT m.id, m.title, m.runtime_min
+FROM screenings s
+JOIN movies m ON m.id = s.movie_id
+JOIN theaters t ON t.id = s.theater_id
+WHERE s.business_date = ?1 AND t.status = 'active'
+ORDER BY m.title;
+```
+
+- 原則1（内部利用限定）: 作品の存在のみ返し、時刻・劇場別内訳は返さない。
+
+### 5.3 `/theaters`
+
+```sql
+SELECT id, name, short_name, lat, lng, official_url
+FROM theaters WHERE status = 'active' ORDER BY name;
+```
+
+### 5.4 データ未取込の判定（422 分岐）
+
+`/plan` で対象日データがあるかを先に判定し、`no_screenings`(0件) と `DATA_NOT_READY`(未取込) を区別する。
+
+```ts
+// 「その日の ingest_run が1件も succeeded でない」= 未取込 → 422
+const ready = await db.prepare(
+  `SELECT 1 FROM ingest_runs
+    WHERE business_date=?1 AND status='succeeded' LIMIT 1`
+).bind(businessDate).first();
+if (!ready) throw new ApiError(422, 'DATA_NOT_READY');
+```
+
+## 6. レビュー承認の反映
+
+```ts
+export async function approveReview(db: D1Database, reviewId: string) {
+  const rev = await db.prepare(
+    `SELECT ingest_run_id, payload_json FROM extraction_reviews
+      WHERE id=?1 AND status='pending'`
+  ).bind(reviewId).first<{ingest_run_id:string; payload_json:string}>();
+  if (!rev) throw new Error('review not found or not pending');
+
+  const payload = ExtractionResult.parse(JSON.parse(rev.payload_json));
+  const run = await getRun(db, rev.ingest_run_id);
+
+  // 正規化 + movie 解決（通常パスと同一関数）
+  const rows = await normalizeAndResolve(db, run.theater_id, payload);
+  await replaceScreenings(db, run.theater_id, payload.businessDate,
+                          rev.ingest_run_id, rows);   // ← 4.1 を再利用
+
+  await db.batch([
+    db.prepare(`UPDATE extraction_reviews SET status='approved', reviewed_at=?2 WHERE id=?1`)
+      .bind(reviewId, nowIso()),
+    db.prepare(`UPDATE ingest_runs SET status='succeeded', written_count=?2, finished_at=?3 WHERE id=?1`)
+      .bind(rev.ingest_run_id, rows.length, nowIso()),
+  ]);
+}
+```
+
+## 7. データ保持 Cron（日次）
+
+`03_data-model.md` §4 の期限削除を1つの Cron で実行する。
+
+```sql
+-- screenings: business_date が 30日以上前
+DELETE FROM screenings
+ WHERE business_date < date('now','-30 days');
+
+-- ingest_runs: started_at が 180日以上前
+DELETE FROM ingest_runs
+ WHERE started_at < datetime('now','-180 days');
+
+-- shared_plans: 期限切れ
+DELETE FROM shared_plans
+ WHERE expires_at < datetime('now');
+
+-- extraction_reviews: 解決済み(approved/rejected)かつ 90日以上前
+DELETE FROM extraction_reviews
+ WHERE status <> 'pending'
+   AND created_at < datetime('now','-90 days');
+```
+
+- R2 スナップショット（90日）は R2 のライフサイクルルールで別途削除（D1 Cron の対象外）。
+- 削除順は screenings → ingest_runs の順（screenings が ingest_run を参照するため、参照先を後に消す）。ただし FK は宣言のみなので順序は厳密には問わない。運用上は上記順を推奨。
+
+## 8. D1 固有の注意点
+
+- **1クエリの結果サイズ・実行時間に上限**がある。planner の候補ロード（5.1）は business_date 1日分に限定し、全期間スキャンしない（インデックス `idx_screenings_lookup` が効く）。
+- **`batch()` はアトミック**だが、`prepare().run()` を個別に連続実行してもトランザクションにはならない。洗い替え（4.1）と承認反映（6）は必ず `batch()` を使う。
+- **`ON CONFLICT` は使えるが、複合的な UPSERT は避け**、SELECT→分岐→INSERT の明示フローにする（4.2）。競合時の取り直しを忘れない。
+- boolean 型はない。フラグは `INTEGER 0/1` か status 文字列で表現（本設計は status 文字列で統一）。
+- `datetime('now')` は UTC を返す。business_date 比較で JST 境界が要る箇所はアプリ側で計算する。

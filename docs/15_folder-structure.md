@@ -1,0 +1,176 @@
+# リポジトリフォルダ構成
+
+- Version: 0.1
+- 関連: `CLAUDE.md`（コマンド・制約）/ `09_roadmap.md`（P0-1 で実際に作る）/ `14_environments-deploy.md`（Compose / Actions）
+- **本ドキュメントが構成の正とする。** 実装時に追加が必要なファイルは追加してよいが、削除・移動・命名変更は本書を先に更新してから行う。
+
+## ツリー
+
+```
+cinema-hashigo/                          # リポジトリルート
+│
+├── CLAUDE.md                            # Claude Code エントリポイント（全制約・コマンド）
+├── compose.yaml                         # ローカル補助サービス（MinIO / transit-stub / slack-stub）
+├── .dev.vars                            # ローカル秘密（gitignore 対象。コミットしない）
+├── .gitignore
+├── package.json                         # pnpm workspace ルート
+├── pnpm-workspace.yaml
+├── tsconfig.base.json                   # 全パッケージ共通 TS 設定（strict: true）
+│
+├── packages/
+│   │
+│   ├── shared/                          # 全パッケージ共有: zod スキーマ・型・ユーティリティ
+│   │   ├── package.json                 # name: @cinema/shared
+│   │   ├── tsconfig.json
+│   │   └── src/
+│   │       ├── index.ts                 # 全 export の re-export
+│   │       ├── schemas/
+│   │       │   ├── theater.ts           # Theater（zod）
+│   │       │   ├── movie.ts             # Movie
+│   │       │   ├── screening.ts         # Screening / CandidateScreening
+│   │       │   ├── plan.ts              # PlanRequest / Plan / Leg（ScreeningLeg / TravelLeg / WaitLeg）/ Score / PlanLabel
+│   │       │   └── extraction.ts        # ExtractionResult / ExtractedScreening
+│   │       └── utils/
+│   │           ├── id.ts                # newId()（nanoid ベース、プレフィックス付き短ID）
+│   │           ├── time.ts              # normalizeStart() / toBusinessDate() / titleKey()
+│   │           └── compare.ts           # compareScore() / isBetter()（DP 比較関数の唯一の実装）
+│   │
+│   ├── api/                             # コア API（Cloudflare Workers + Hono）
+│   │   ├── package.json                 # name: @cinema/api
+│   │   ├── tsconfig.json
+│   │   ├── wrangler.toml                # バインディング定義（local / [env.st] / [env.prod]）
+│   │   └── src/
+│   │       ├── index.ts                 # Hono アプリ生成・ルート登録・レート制限
+│   │       ├── routes/
+│   │       │   ├── theaters.ts          # GET /v1/theaters
+│   │       │   ├── movies.ts            # GET /v1/movies?date=（上映時刻を返さない: 原則1）
+│   │       │   ├── plan.ts              # POST /v1/plan（infeasible も 200 で返す）
+│   │       │   └── plans.ts             # POST /v1/plans / GET /v1/plans/:id / GET /v1/plans/:id/ics
+│   │       ├── planner/                 # ルート算出コア（12_dp-implementation.md）
+│   │       │   ├── types.ts             # Candidate / Score / Entry / PlanContext
+│   │       │   ├── travel.ts            # TravelResolver（KV 行列参照 + origin/dest 動的解決）
+│   │       │   ├── dp.ts                # runDp()（ビットマスク DP 本体）
+│   │       │   ├── kbest.ts             # selectPlans()（k-best 列挙 + ラベリング）
+│   │       │   ├── build.ts             # Entry → API Plan（legs 配列）変換
+│   │       │   ├── index.ts             # plan() エントリ・infeasible 判定
+│   │       │   └── __tests__/
+│   │       │       ├── dp.spec.ts       # 12 §7 検算済み期待値テスト ← 最重要・値を変えない
+│   │       │       ├── travel.spec.ts
+│   │       │       └── build.spec.ts
+│   │       └── db/                      # D1 読取専用アクセス層（11 §5）
+│   │           ├── screenings.ts        # loadCandidates()
+│   │           ├── theaters.ts          # listTheaters()
+│   │           ├── movies.ts            # listMovies()（時刻なし）
+│   │           └── shared-plans.ts      # sharePlan() / getPlan() / getIcs()
+│   │
+│   ├── ingest/                          # 取込サービス + 管理サイト（Workers + Hono+JSX）
+│   │   ├── package.json                 # name: @cinema/ingest
+│   │   ├── tsconfig.json
+│   │   ├── wrangler.toml                # Cron / Queues 含む（local / [env.st] / [env.prod]）
+│   │   └── src/
+│   │       ├── index.ts                 # Worker エントリ（Cron / Queue consumer / /admin fetch ハンドラ振分）
+│   │       ├── cron/
+│   │       │   ├── dispatch.ts          # 劇場リストを Queues に投入（劇場単位にジョブ分割）
+│   │       │   └── travel-matrix.ts     # 劇場間移動時間行列の週次計算 → KV 保存（駅すぱあと API）
+│   │       ├── worker/                  # Queue consumer: 1劇場1ジョブの取込パイプライン
+│   │       │   ├── fetch.ts             # HTML 取得 → R2 保存（static / rendered 切替・UA・間隔遵守）
+│   │       │   ├── preprocess.ts        # HTML → 抽出用テキスト変換（06 §2）
+│   │       │   ├── extract.ts           # Claude Haiku 呼出・JSON 取得（06 §3-4）
+│   │       │   ├── validate.ts          # zod 検証 + 妥当性検証 V1〜V6（06 §5）
+│   │       │   ├── normalize.ts         # 24時超え正規化・endTime 補完・titleKey 名寄せ（06 §6）
+│   │       │   └── write.ts             # D1 洗い替え書込 replaceScreenings()（11 §4.1）
+│   │       ├── prompts/
+│   │       │   └── v1.ts                # 抽出プロンプト v1（バージョン固定・既存版変更禁止）
+│   │       ├── db/                      # D1 書込アクセス層（11 §4）
+│   │       │   ├── ingest-runs.ts       # IngestRun ライフサイクル（queued→succeeded 等）
+│   │       │   ├── movies.ts            # resolveMovieId()（UPSERT + 名寄せ）
+│   │       │   ├── screenings.ts        # replaceScreenings()（洗い替え・batch）
+│   │       │   ├── theaters.ts          # 劇場マスタ読取（active のみ・全件）
+│   │       │   └── reviews.ts           # レビューキュー登録・approveReview()（11 §6）
+│   │       └── admin/                   # 管理サイト（Cloudflare Access 配下・07 §2）
+│   │           ├── index.ts             # /admin ルート登録（Hono）
+│   │           ├── pages/
+│   │           │   ├── dashboard.tsx    # ダッシュボード: 取込状況・LLM コスト・規約期限警告
+│   │           │   ├── theaters.tsx     # 劇場マスタ CRUD + 手動取込・robots 確認
+│   │           │   ├── runs.tsx         # 取込履歴一覧・詳細・R2 再抽出
+│   │           │   └── reviews.tsx      # レビューキュー: 目視確認・承認・破棄
+│   │           └── components/          # 共通 Hono JSX コンポーネント（レイアウト等）
+│   │
+│   └── web/                             # LP + Web アプリ（Cloudflare Pages）
+│       ├── package.json                 # name: @cinema/web
+│       ├── tsconfig.json
+│       ├── wrangler.toml                # Pages 設定（st / prod）
+│       └── src/
+│           ├── app/                     # ルーティング（Next.js App Router 想定）
+│           │   ├── page.tsx             # LP (/)（07 §1.2）
+│           │   ├── plan/
+│           │   │   └── page.tsx         # プラン作成・結果一覧 (/plan)（07 §1.3-1.4）
+│           │   └── p/
+│           │       └── [planId]/
+│           │           └── page.tsx     # 共有ページ /p/{id}（07 §1.5、SSR+OGP 必須）
+│           ├── components/
+│           │   ├── PlanForm.tsx         # 条件入力フォーム（日付/時間帯/地点/映画選択）
+│           │   ├── PlanResult.tsx       # タイムライン表示・タブ切替・集計・終電バッジ
+│           │   ├── CalendarButton.tsx   # Google カレンダー render URL 生成（OAuth 不使用）
+│           │   └── ShareButton.tsx      # Web Share API + 共有 URL 発行
+│           ├── lib/
+│           │   └── api-client.ts        # コア API クライアント（@cinema/shared の型を使用）
+│           └── static/                  # LP 用静的アセット・OGP 雛形等
+│
+├── mocks/                               # Docker Compose スタブ設定（ローカル開発専用）
+│   ├── transit/
+│   │   └── transit-expectations.json   # 駅すぱあと API モックレスポンス定義
+│   └── slack/
+│       └── slack-expectations.json     # Slack Webhook モックレスポンス定義
+│
+├── migrations/                          # D1 マイグレーション（local/st/prod 共通）
+│   ├── 0001_init.sql                    # 全テーブル定義・インデックス（11 §1）
+│   └── 0002_seed_dev.sql               # ローカル開発 seed（本番・ST に適用しない）
+│
+├── docs/                                # 設計ドキュメント（本ファイル群）
+│   ├── README.md                        # 索引・優先順位・不変条件
+│   ├── 01_requirements.md              ─┐
+│   ├── 02_glossary.md                   │
+│   ├── 03_data-model.md                 │
+│   ├── 04_api-spec.md                   │ 設計ドキュメント群
+│   ├── 05_routing-algorithm.md          │
+│   ├── 06_extraction-spec.md            │
+│   ├── 07_screens.md                    │
+│   ├── 08_compliance-policy.md          │ ← Claude Code への制約（最重要）
+│   ├── 09_roadmap.md                    │
+│   ├── 10_adr/                          │
+│   │   ├── README.md                    │
+│   │   └── 0001-0010.md               ─┘
+│   ├── 11_d1-implementation.md         ─┐ 実装詳細
+│   ├── 12_dp-implementation.md          │ （期待値テスト含む）
+│   ├── 13_claude-code-kickoff.md        │ Claude Code 起動プロンプト
+│   ├── 14_environments-deploy.md        │ 環境・Compose・Actions
+│   └── 15_folder-structure.md         ─┘ 本ドキュメント
+│
+└── .github/
+    └── workflows/
+        ├── ci.yml                       # PR & push: typecheck / lint / test（DP 期待値含む）
+        ├── deploy-st.yml                # main push → ST migrate + deploy（自動）
+        └── deploy-prod.yml              # v* タグ + 承認 → PROD migrate + deploy
+
+```
+
+## パッケージ名と依存関係
+
+```
+@cinema/shared   ← 依存なし（他 3 パッケージが参照）
+@cinema/api      → @cinema/shared
+@cinema/ingest   → @cinema/shared
+@cinema/web      → @cinema/shared
+```
+
+- `shared` は Workers / Node / ブラウザのどの環境でも動く純 TypeScript（Cloudflare 固有の型に依存しない）。
+- パッケージ間の import は `@cinema/shared` 経由のみ。`api` が `ingest` を、または `ingest` が `api` を import することはない（疎結合）。
+
+## 設計上の注意点
+
+- `migrations/` はパッケージ内ではなくリポジトリルートに置く。全環境（local/st/prod）に同一 DDL を適用するため、どのパッケージにも属さない。
+- `compose.yaml` は D1（DB 本体）を含まない。ローカル D1 は wrangler が SQLite で管理する（14 §1・ADR-0009）。
+- `.dev.vars` は gitignore 対象。コミット禁止。GitHub Secrets にも置かず、ローカル専用。
+- `admin/` は `ingest/` パッケージ内に同居（Cloudflare Access で /admin を保護。別デプロイ不要）。
+- `web/` の共有ページ（/p/[planId]）は SSR 必須（OGP 動的生成のため）。他ページは CSR 可。
