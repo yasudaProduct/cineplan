@@ -22,22 +22,22 @@
 
 ## P0. 基盤セットアップ
 
-- [ ] **P0-1 モノレポ初期化**
+- [x] **P0-1 モノレポ初期化**
   - 構成: `packages/{shared,ingest,api,web}`。pnpm workspace。
   - Done: `pnpm install` が通り、各パッケージが空ビルドできる。
-- [ ] **P0-2 shared パッケージ: zod スキーマ**
+- [x] **P0-2 shared パッケージ: zod スキーマ**
   - `02_glossary.md` の命名、`04_api-spec.md` のスキーマ、`06_extraction-spec.md` の抽出スキーマを zod で定義。
   - Done: Theater/Movie/Screening/PlanRequest/Plan/ExtractionResult 等が型として export される。
-- [ ] **P0-3 D1 セットアップ + マイグレーション**
+- [x] **P0-3 D1 セットアップ + マイグレーション**
   - `11_d1-implementation.md` §1 のマイグレーション（0001_init.sql）をそのまま使用。論理設計は `03_data-model.md` §3。
   - Done: ローカル D1 にテーブルが作成され、seed で theaters 1件を投入できる。
-- [ ] **P0-4 Cloudflare リソース定義（3環境）**
+- [x] **P0-4 Cloudflare リソース定義（3環境）**
   - `14_environments-deploy.md` §3 に従い、wrangler.toml に既定(local)/`[env.st]`/`[env.prod]` を定義。D1/R2/KV/Queues を環境ごとに分離し命名規約（§3.1）に従う。
   - Done: `wrangler dev` が local バインディングを認識。`--env st` / `--env prod` の deploy 構成が揃う（実デプロイはまだしない）。
-- [ ] **P0-5 ローカル補助サービス（Docker Compose）**
+- [x] **P0-5 ローカル補助サービス（Docker Compose）**
   - `14_environments-deploy.md` §2 の `compose.yaml`（minio / transit-stub / slack-stub）と `mocks/` 定義。DB本体は含めない（D1はwrangler管理）。
   - Done: `docker compose up -d` でスタブが起動し、`.dev.vars` の向き先でローカル Worker から到達できる。
-- [ ] **P0-6 GitHub Actions（CI + デプロイ土台）**
+- [x] **P0-6 GitHub Actions（CI + デプロイ土台）**
   - `14_environments-deploy.md` §5 の `ci.yml` / `deploy-st.yml` / `deploy-prod.yml` を配置。ST=main push自動、本番=v*タグ＋承認ゲート。
   - Done: PR で ci（typecheck/lint/test）が走る。deploy ワークフローは構文上有効（Secrets 未設定なら実デプロイはスキップ/失敗でよい。人間が §5.6 の設定を行う前提）。
 
