@@ -8,8 +8,10 @@
 
 - ツール: `wrangler d1 migrations`。ファイルは `migrations/NNNN_description.sql`（連番）。
 - 各マイグレーションは前方のみ（ロールバックは新規マイグレーションで対応）。
-- ローカル: `wrangler d1 migrations apply cinema_hashigo --local`
-- 本番: `wrangler d1 migrations apply cinema_hashigo --remote`
+- ローカル: `pnpm -F @cinema/api exec wrangler d1 migrations apply cinema_hashigo --local --persist-to ../../.wrangler-state`
+- 本番: Actions 経由（`--env st|prod --remote`。docs/14 §5）。手動時も同形式。
+- `migrations_dir` は `packages/api/wrangler.toml` の各 D1 バインディングで `../../migrations`（リポジトリルート）を指す。migrations の apply は api パッケージから実行する。
+- **seed（開発ダミーデータ）はマイグレーションに含めない。** `seeds/dev_seed.sql` として分離し、ローカルのみ `wrangler d1 execute ... --file` で投入する（下記）。migrations/ に seed を置くと deploy 時に ST/prod へ誤って適用されるため。
 - D1 は SQLite。外部キーは `PRAGMA foreign_keys=ON` が必要だが、D1 は接続ごとに OFF がデフォルト。**アプリ側で整合性を担保し、FK 制約は宣言のみ（ドキュメント目的）とする**。実削除は洗い替え（DELETE→INSERT）で行うため FK カスケードに依存しない。
 
 ### 0001_init.sql
@@ -110,7 +112,14 @@ CREATE TABLE shared_plans (
 CREATE INDEX idx_shared_plans_expiry ON shared_plans (expires_at);
 ```
 
-### 0002_seed_dev.sql（ローカル専用・本番適用しない）
+### seeds/dev_seed.sql（ローカル専用・マイグレーションではない）
+
+マイグレーション列に入れず、ローカルでのみ次で投入する（ST/prod には流さない）:
+
+```
+pnpm -F @cinema/api exec wrangler d1 execute cinema_hashigo --local \
+  --persist-to ../../.wrangler-state --file ../../seeds/dev_seed.sql
+```
 
 ```sql
 INSERT INTO theaters (id,name,short_name,status,lat,lng,nearest_station,

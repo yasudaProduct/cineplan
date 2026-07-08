@@ -1,0 +1,13 @@
+# .dev.vars.example — このファイルをコピーして .dev.vars を作成し、実値を記入する。
+# .dev.vars は gitignore 対象（コミット禁止）。詳細は docs/16_human-setup-guide.md §2。
+APP_ENV=local
+
+# Anthropic API キー（LLM 抽出。P1 で使用）。console.anthropic.com で発行。
+ANTHROPIC_API_KEY=sk-ant-xxxxxxxx
+
+# 駅すぱあと API（移動時間行列。P4-6 で使用）。ローカルは transit-stub 経由でも可。
+TRANSIT_API_BASE=http://localhost:1080
+# EKISPERT_API_KEY=xxxxxxxx
+
+# Slack 通知（検証NG・取込失敗。P1-7 で使用）。ローカルは slack-stub を指す。
+SLACK_WEBHOOK_URL=http://localhost:1081/webhook

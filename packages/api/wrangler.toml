@@ -1,0 +1,51 @@
+name = "cinema-api"
+main = "src/index.ts"
+compatibility_date = "2026-07-01"
+
+# --- 既定（local: wrangler dev が使用。ID は local emulation 用のプレースホルダ）---
+[[d1_databases]]
+binding = "DB"
+database_name = "cinema_hashigo"
+database_id = "local-cinema-hashigo"
+migrations_dir = "../../migrations"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "local-cinema-kv"
+
+[vars]
+APP_ENV = "local"
+
+# --- ST 環境（14 §3.1 命名規約。ID は P4-0 で実値に置換）---
+[env.st]
+name = "cinema-api-st"
+
+[env.st.vars]
+APP_ENV = "st"
+
+[[env.st.d1_databases]]
+binding = "DB"
+database_name = "cinema_hashigo_st"
+database_id = "REPLACE_WITH_ST_D1_ID"
+migrations_dir = "../../migrations"
+
+[[env.st.kv_namespaces]]
+binding = "KV"
+id = "REPLACE_WITH_ST_KV_ID"
+
+# --- 本番環境（ID は P5-7 で実値に置換）---
+[env.prod]
+name = "cinema-api-prod"
+
+[env.prod.vars]
+APP_ENV = "prod"
+
+[[env.prod.d1_databases]]
+binding = "DB"
+database_name = "cinema_hashigo_prod"
+database_id = "REPLACE_WITH_PROD_D1_ID"
+migrations_dir = "../../migrations"
+
+[[env.prod.kv_namespaces]]
+binding = "KV"
+id = "REPLACE_WITH_PROD_KV_ID"

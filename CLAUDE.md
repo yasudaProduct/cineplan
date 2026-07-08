@@ -70,22 +70,34 @@ compose.yaml
 - **prod**: 本番。`v*` タグ + 承認ゲートでデプロイ。
 - st/prod の Cloudflare リソースは完全分離。IDを取り違えない。
 
-## コマンド（実装が進んだら確定・更新）
+## コマンド（P0 セットアップ時点で確定。以降タスクに応じて追記）
 
 ```
 pnpm install
-docker compose up -d minio transit-stub slack-stub   # ローカル補助（必要分のみ）
-pnpm -F @cinema/api dev          # コアAPI ローカル起動 (wrangler dev)
+
+# ローカル補助サービス（必要分のみ選択起動）
+docker compose up -d transit-stub slack-stub   # minio は任意
+
+# 開発サーバ（wrangler dev。--persist-to で local D1/R2/KV を全パッケージ共有）
+pnpm -F @cinema/api dev
 pnpm -F @cinema/ingest dev
-pnpm -F @cinema/web dev
-pnpm test                     # 全パッケージのテスト（DP期待値含む）
-pnpm typecheck && pnpm lint
-wrangler d1 migrations apply cinema_hashigo --local          # local
-wrangler d1 migrations apply cinema_hashigo_st --env st --remote     # ST（通常はActions経由）
-wrangler deploy --env st      # 手動デプロイ時（通常はActions経由）
+# @cinema/web は P3-1 で Next.js 初期化後に dev を追加
+
+# 検証（CI と同一）
+pnpm typecheck
+pnpm lint            # Biome。自動修正は pnpm lint:fix
+pnpm test            # vitest。DP 期待値（P2-3）含む
+
+# D1 マイグレーション + seed（ローカル。api パッケージから実行）
+pnpm -F @cinema/api exec wrangler d1 migrations apply cinema_hashigo --local --persist-to ../../.wrangler-state
+pnpm -F @cinema/api exec wrangler d1 execute cinema_hashigo --local --persist-to ../../.wrangler-state --file ../../seeds/dev_seed.sql
+
+# デプロイ（通常は GitHub Actions。ST=main push / prod=v* タグ+承認。手動時のみ↓）
+pnpm -F @cinema/api exec wrangler deploy --env st
 ```
 
-（コマンド名は P0 セットアップ時に確定させ、本節を更新すること。）
+- リンタは Biome（`biome.json`）、テストは Vitest（`vitest.config.ts`）、型は各パッケージ `tsc --noEmit`。
+- ST/prod の実 D1/KV/R2/Queue ID は未採番（`wrangler.toml` は `REPLACE_WITH_*` プレースホルダ）。採番と反映は P4-0（ST）/ P5-7（prod）。手順は `docs/16_human-setup-guide.md` §3・§5。
 
 ## コーディング方針（軽量）
 

@@ -1,0 +1,93 @@
+name = "cinema-ingest"
+main = "src/index.ts"
+compatibility_date = "2026-07-01"
+
+# --- 既定（local）---
+[[d1_databases]]
+binding = "DB"
+database_name = "cinema_hashigo"
+database_id = "local-cinema-hashigo"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "local-cinema-kv"
+
+[[r2_buckets]]
+binding = "SNAPSHOTS"
+bucket_name = "cinema-snapshots"
+
+[[queues.producers]]
+binding = "INGEST_QUEUE"
+queue = "cinema-ingest-queue"
+
+# 取得マナー（docs/08 §3）: ホスト単位で直列。並列化で実質頻度を上げない。
+[[queues.consumers]]
+queue = "cinema-ingest-queue"
+max_batch_size = 1
+max_concurrency = 1
+
+[vars]
+APP_ENV = "local"
+
+# Cron は本番のみ有効（docs/14 §3.2）。local/st では定義しない（先方サイトを毎日叩かない）。
+
+# --- ST 環境 ---
+[env.st]
+name = "cinema-ingest-st"
+
+[env.st.vars]
+APP_ENV = "st"
+
+[[env.st.d1_databases]]
+binding = "DB"
+database_name = "cinema_hashigo_st"
+database_id = "REPLACE_WITH_ST_D1_ID"
+
+[[env.st.kv_namespaces]]
+binding = "KV"
+id = "REPLACE_WITH_ST_KV_ID"
+
+[[env.st.r2_buckets]]
+binding = "SNAPSHOTS"
+bucket_name = "cinema-snapshots-st"
+
+[[env.st.queues.producers]]
+binding = "INGEST_QUEUE"
+queue = "cinema-ingest-queue-st"
+
+[[env.st.queues.consumers]]
+queue = "cinema-ingest-queue-st"
+max_batch_size = 1
+max_concurrency = 1
+
+# --- 本番環境（Cron 有効。21:00 UTC = 06:00 JST。N-02 の鮮度要件）---
+[env.prod]
+name = "cinema-ingest-prod"
+
+[env.prod.vars]
+APP_ENV = "prod"
+
+[[env.prod.d1_databases]]
+binding = "DB"
+database_name = "cinema_hashigo_prod"
+database_id = "REPLACE_WITH_PROD_D1_ID"
+
+[[env.prod.kv_namespaces]]
+binding = "KV"
+id = "REPLACE_WITH_PROD_KV_ID"
+
+[[env.prod.r2_buckets]]
+binding = "SNAPSHOTS"
+bucket_name = "cinema-snapshots-prod"
+
+[[env.prod.queues.producers]]
+binding = "INGEST_QUEUE"
+queue = "cinema-ingest-queue-prod"
+
+[[env.prod.queues.consumers]]
+queue = "cinema-ingest-queue-prod"
+max_batch_size = 1
+max_concurrency = 1
+
+[env.prod.triggers]
+crons = ["0 21 * * *"]

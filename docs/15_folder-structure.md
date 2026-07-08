@@ -124,9 +124,11 @@ cinema-hashigo/                          # リポジトリルート
 │   └── slack/
 │       └── slack-expectations.json     # Slack Webhook モックレスポンス定義
 │
-├── migrations/                          # D1 マイグレーション（local/st/prod 共通）
-│   ├── 0001_init.sql                    # 全テーブル定義・インデックス（11 §1）
-│   └── 0002_seed_dev.sql               # ローカル開発 seed（本番・ST に適用しない）
+├── migrations/                          # D1 マイグレーション（local/st/prod 共通・スキーマのみ）
+│   └── 0001_init.sql                    # 全テーブル定義・インデックス（11 §1）
+│
+├── seeds/                               # 開発 seed（マイグレーション外。ローカルのみ execute で投入）
+│   └── dev_seed.sql                     # 開発ダミー劇場（本番・ST に適用しない。11 §1）
 │
 ├── docs/                                # 設計ドキュメント（本ファイル群）
 │   ├── README.md                        # 索引・優先順位・不変条件
