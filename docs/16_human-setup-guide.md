@@ -12,7 +12,7 @@
 | 節 | 作業 | タイミング | 所要目安 |
 |---|---|---|---|
 | §1 | 開発ツール・GitHub | P0 前 | 確認済み・作業なし |
-| §2.1 | Google Gemini API キー発行 | P1 前 | 10分 |
+| §2.1 | Google Gemini API キー発行（開発は Ollama で先行可） | P1 品質確定/ST 前 | 10分 |
 | §2.2 | 劇場1館目の採用確認（規約・robots） | P1 前 | 30分 |
 | §2.3 | Slack Webhook 作成 | ST 有効化（§3）まで | 10分 |
 | §3 | ST 環境有効化（課金・トークン・GitHub 設定） | P3 完了後推奨 | 40〜60分 |
@@ -42,7 +42,9 @@
 
 ### 2.1 Google Gemini API キー（LLM 抽出用。ADR-0011）
 
-抽出の既定プロバイダは Google Gemini Flash（無料ティア）。本サービスの負荷（数十リクエスト/日）は無料枠（Flash 系: 1,500 req/日・15 RPM・1M TPM）に対し桁違いに余裕があり、実質 0円で運用できる。
+抽出の既定プロバイダは本番/ST が Google Gemini Flash（無料ティア）。本サービスの負荷（数十リクエスト/日）は無料枠（Flash 系: 1,500 req/日・15 RPM・1M TPM）に対し桁違いに余裕があり、実質 0円で運用できる。
+
+> **開発は API キー無しで着手できる**: 抽出の**ローカル開発は Ollama（既定・オフライン・無料）**で回す（ADR-0011）。Gemini キーが要るのは「抽出品質を本番プロバイダで確定する段階」と ST/prod。先に取っておくとスムーズだが、P1-3 の実装反復は Ollama だけで始められる。Ollama は既存環境をそのまま利用可（`http://localhost:11434`。Mac は native 版推奨、`ollama pull qwen2.5` 等）。
 
 1. https://aistudio.google.com に Google アカウントでログイン。
 2. 「Get API key」→ Create API key。**クレジットカード不要**。無料ティアで始められる。

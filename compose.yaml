@@ -35,5 +35,13 @@ services:
     volumes:
       - ./mocks/slack:/config
 
+  # ローカル LLM 抽出（開発既定・ADR-0011）。Mac は Metal を使える native の Ollama を推奨するため
+  # 通常このサービスは不要（既存 Ollama を http://localhost:11434 で使う）。Docker で動かす場合のみ有効化:
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   ports: ["11434:11434"]
+  #   volumes: ["ollama:/root/.ollama"]
+
 volumes:
   minio-data:
+  # ollama:

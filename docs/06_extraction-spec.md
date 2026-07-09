@@ -51,7 +51,7 @@ export const ExtractionResult = z.object({
 ## 4. プロンプト設計
 
 - 場所: `packages/ingest/src/extraction/prompts/v{N}.ts`。**プロンプトは必ずバージョン番号付きファイルで管理し、ingest_runs.prompt_version に記録する**（過去実行の再現のため）。既存バージョンのファイルは変更せず、修正は新バージョン追加で行う。プロンプト本文はプロバイダ非依存に保つ。
-- プロバイダ/モデル: 既定 **Google Gemini Flash（無料ティア。ADR-0011）**。呼び出しはプロバイダ抽象化した抽出クライアント越しに行い、`provider`（`gemini` | `workers-ai` | `anthropic`）と `model` を設定値（wrangler var）で切替える。具体モデルID（例: `gemini-flash` 系）は実装時に AI Studio で確認・確定する。精度不足は管理サイトの検証NG率で観測し、上位モデル/別プロバイダへ差し替える（抽象化済みのため容易）。
+- プロバイダ/モデル: **本番/ST 既定 Google Gemini Flash（無料ティア。ADR-0011）、ローカル開発は Ollama 既定**。呼び出しはプロバイダ抽象化した抽出クライアント越しに行い、`provider`（`gemini` | `ollama` | `workers-ai` | `anthropic`）と `model` を設定値（`LLM_PROVIDER` / wrangler var）で切替える。具体モデルID（例: Gemini は `gemini-flash` 系、Ollama は `qwen2.5` 等）は実装時に確定する。精度不足は管理サイトの検証NG率で観測し、上位モデル/別プロバイダへ差し替える（抽象化済みのため容易）。
 - 呼出パラメータ: temperature 0。JSON 構造化出力は Gemini の `responseMimeType=application/json` + `responseSchema`（§3 の zod を JSON Schema 化）で担保する。出力上限は想定件数 × 60 トークン + 500 目安。
 - 記録: ingest_runs に provider + model + in/out トークンを残す（プロバイダ横断でコスト・品質を比較）。`llm_model` は provider 込みの識別子（例: `gemini:gemini-flash`）とする。
 
@@ -128,4 +128,5 @@ zod 検証通過後、以下の妥当性検証を行う。1つでも NG なら `
 
 - `fixtures/` に各劇場の実 HTML スナップショット（匿名化不要、日付固定）を保存し、抽出のゴールデンテストを作る。
 - LLM 呼出を含むテストは CI では録画リプレイ（保存済みレスポンス）で回し、実 API を叩く統合テストは手動トリガーのみ。
+- **開発は Ollama（ローカル）で高速反復してよい（ADR-0011）が、抽出品質の確定は本番プロバイダ（Gemini）で行う**。プロンプト調整・ゴールデン期待値の作成・新劇場の active 昇格判断は Gemini の出力で検証する（モデル差で結果が変わるため。「Ollama で通った ≠ Gemini で通る」）。CI は provider に依らず録画リプレイ。
 - 新劇場追加時の受入手順: 手動取込 → レビューキューで全件目視 → 3日連続 succeeded で active 昇格。

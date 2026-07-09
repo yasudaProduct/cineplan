@@ -159,8 +159,9 @@ APP_ENV = "prod"
 ```
 # .dev.vars（例・コミットしない）
 APP_ENV=local
-LLM_PROVIDER=gemini
-GEMINI_API_KEY=xxxx
+LLM_PROVIDER=ollama           # 開発既定。本番/ST は gemini
+OLLAMA_BASE_URL=http://localhost:11434
+GEMINI_API_KEY=xxxx           # 品質確定・ST/prod 用
 TRANSIT_API_BASE=http://localhost:1080
 SLACK_WEBHOOK_URL=http://localhost:1081/webhook
 ```
