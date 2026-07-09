@@ -22,22 +22,22 @@
 
 ## P0. 基盤セットアップ
 
-- [ ] **P0-1 モノレポ初期化**
+- [x] **P0-1 モノレポ初期化**
   - 構成: `packages/{shared,ingest,api,web}`。pnpm workspace。
   - Done: `pnpm install` が通り、各パッケージが空ビルドできる。
-- [ ] **P0-2 shared パッケージ: zod スキーマ**
+- [x] **P0-2 shared パッケージ: zod スキーマ**
   - `02_glossary.md` の命名、`04_api-spec.md` のスキーマ、`06_extraction-spec.md` の抽出スキーマを zod で定義。
   - Done: Theater/Movie/Screening/PlanRequest/Plan/ExtractionResult 等が型として export される。
-- [ ] **P0-3 D1 セットアップ + マイグレーション**
+- [x] **P0-3 D1 セットアップ + マイグレーション**
   - `11_d1-implementation.md` §1 のマイグレーション（0001_init.sql）をそのまま使用。論理設計は `03_data-model.md` §3。
   - Done: ローカル D1 にテーブルが作成され、seed で theaters 1件を投入できる。
-- [ ] **P0-4 Cloudflare リソース定義（3環境）**
+- [x] **P0-4 Cloudflare リソース定義（3環境）**
   - `14_environments-deploy.md` §3 に従い、wrangler.toml に既定(local)/`[env.st]`/`[env.prod]` を定義。D1/R2/KV/Queues を環境ごとに分離し命名規約（§3.1）に従う。
   - Done: `wrangler dev` が local バインディングを認識。`--env st` / `--env prod` の deploy 構成が揃う（実デプロイはまだしない）。
-- [ ] **P0-5 ローカル補助サービス（Docker Compose）**
+- [x] **P0-5 ローカル補助サービス（Docker Compose）**
   - `14_environments-deploy.md` §2 の `compose.yaml`（minio / transit-stub / slack-stub）と `mocks/` 定義。DB本体は含めない（D1はwrangler管理）。
   - Done: `docker compose up -d` でスタブが起動し、`.dev.vars` の向き先でローカル Worker から到達できる。
-- [ ] **P0-6 GitHub Actions（CI + デプロイ土台）**
+- [x] **P0-6 GitHub Actions（CI + デプロイ土台）**
   - `14_environments-deploy.md` §5 の `ci.yml` / `deploy-st.yml` / `deploy-prod.yml` を配置。ST=main push自動、本番=v*タグ＋承認ゲート。
   - Done: PR で ci（typecheck/lint/test）が走る。deploy ワークフローは構文上有効（Secrets 未設定なら実デプロイはスキップ/失敗でよい。人間が §5.6 の設定を行う前提）。
 
@@ -52,7 +52,7 @@
   - `06_extraction-spec.md` §2 のタグ簡約・script/style 除去。
   - Done: 入力 HTML が抽出用テキストに変換される（�スナップショットでテスト）。
 - [ ] **P1-3 LLM 抽出**
-  - Haiku 呼出（temperature 0, JSON）。プロンプト v1 を `prompts/v1.ts` に。
+  - 抽出クライアント（provider 抽象化。既定 Gemini Flash・ADR-0011）で呼出（temperature 0, JSON 構造化出力）。プロンプト v1 を `prompts/v1.ts` に。
   - Done: fixture HTML から ExtractionResult が得られ、zod 検証を通る。CI は録画リプレイ。
 - [ ] **P1-4 検証**
   - `06_extraction-spec.md` §5 の V1〜V6。
@@ -111,8 +111,11 @@
 
 ## P4. 管理サイト + 劇場拡充
 
+- [ ] **P4-0 ST 環境有効化**
+  - 人間作業（`16_human-setup-guide.md` §3: Workers Paid・ST リソース・API トークン・GitHub Environments）の完了後に着手。wrangler.toml へ実 ID を反映 → 初回 ST デプロイ + migrate + seed → ST シークレット投入（人間、16 §3.6）→ 手動取込で疎通確認。
+  - Done: ST の /healthz・/plan が応答し、1劇場の手動取込が succeeded になる。
 - [ ] **P4-1 Cloudflare Access 設定**
-  - /admin にアクセス制御。Google ログイン。
+  - /admin にアクセス制御（IdP は One-time PIN で開始、Google IdP 追加は任意。手順: `16_human-setup-guide.md` §4.1）。
   - Done: 認証なしで /admin が開けない。
 - [ ] **P4-2 ダッシュボード**（`07_screens.md` §2.2）
 - [ ] **P4-3 劇場マスタ CRUD + 手動取込 + 新規は paused 起票**（§2.3、採用プロセスを UI で担保）
@@ -148,6 +151,23 @@
 
 ---
 
+## 人間（オーナー）作業との依存関係
+
+アカウント作成・課金・シークレット発行・規約/法務の判断・本番デプロイ承認は Claude Code が代行しない。手順は `16_human-setup-guide.md` にまとめた。各フェーズ着手前に対応する人間作業が完了していること。
+
+| タイミング | 人間作業（16 の節） | 完了しないとブロックされるタスク |
+|---|---|---|
+| P0 開始前 | 開発ツール・GitHub リポジトリ（§1）→ 確認済み | なし（P0 は着手可能） |
+| P1 開始前 | 劇場1館目の採用確認（§2.2）。開発 LLM は Ollama（ローカル・人間作業なし）で先行可 | P1-1（実サイト取得） |
+| P1 品質確定/ST 前 | Gemini API キー（§2.1・無料） | P1-3 の品質確定 / P4-0 |
+| ST 有効化まで | Slack Webhook（§2.3。ローカルは slack-stub で可） | P4-0（ST の実通知） |
+| P3 完了後（推奨） | ST 有効化一式（§3） | P4-0 以降すべて |
+| P4 中 | Access 設定（§4.1）/ 駅すぱあとキー（§4.2）/ 劇場2〜5館の採用確認（§4.3） | P4-1 / P4-6 / P4-8 |
+| P5 終盤 | ドメイン・prod リソース・prod シークレット・法務文面確認・タグ承認（§5） | P5-7 |
+| リリース後 | 日次/週次/90日の運用（§6） | — |
+
+---
+
 ## 進行ルール（Claude Code 向け）
 
 1. 着手前に、そのタスクが参照する docs を読む（各タスクにファイル番号を明記済み）。
@@ -156,3 +176,4 @@
 4. スキーマ変更が必要になったら、まず `packages/shared` と該当 docs を直し、その後に実装へ反映する（実装だけ先に変えない）。
 5. 環境は local / st / prod の3つ（`14_environments-deploy.md`）。シークレットはコードに直書きせず、local は `.dev.vars`、st/prod は `wrangler secret`。ST と本番の Cloudflare リソースIDを取り違えない。
 6. st の Cron（取込定期実行）は原則 OFF。開発中に先方サイトを不必要に叩かない（`08` の取得マナー）。
+7. 人間作業（`16_human-setup-guide.md`）が前提のタスクに当たったら、実装を止めて依頼する。アカウント作成・課金・規約判断・本番承認を Claude Code が代行しない。

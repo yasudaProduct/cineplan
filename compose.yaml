@@ -1,0 +1,47 @@
+# compose.yaml — ローカル開発の補助サービス群（docs/14 §2.1）。
+# DB本体は含まない（D1 は wrangler が SQLite で提供。ADR-0009）。
+# 必要なサービスだけ選択起動してよい: docker compose up -d transit-stub slack-stub
+services:
+  # R2 の代替（S3互換）。通常は wrangler の R2 local emulation で足りるため任意。
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: devminio
+      MINIO_ROOT_PASSWORD: devminio-secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+
+  # 駅すぱあと API 等 外部APIのスタブ（移動時間行列バッチ・origin 解決のローカル検証用）。
+  transit-stub:
+    image: mockserver/mockserver:latest
+    ports:
+      - "1080:1080"
+    environment:
+      MOCKSERVER_INITIALIZATION_JSON_PATH: /config/transit-expectations.json
+    volumes:
+      - ./mocks/transit:/config
+
+  # Slack 通知のモック（webhook 受け口）。検証NG通知の配線確認用。
+  slack-stub:
+    image: mockserver/mockserver:latest
+    ports:
+      - "1081:1080"
+    environment:
+      MOCKSERVER_INITIALIZATION_JSON_PATH: /config/slack-expectations.json
+    volumes:
+      - ./mocks/slack:/config
+
+  # ローカル LLM 抽出（開発既定・ADR-0011）。Mac は Metal を使える native の Ollama を推奨するため
+  # 通常このサービスは不要（既存 Ollama を http://localhost:11434 で使う）。Docker で動かす場合のみ有効化:
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   ports: ["11434:11434"]
+  #   volumes: ["ollama:/root/.ollama"]
+
+volumes:
+  minio-data:
+  # ollama:

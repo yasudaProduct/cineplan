@@ -76,9 +76,9 @@ docker compose up -d minio transit-stub slack-stub
 wrangler d1 migrations apply cinema_hashigo --local
 
 # 3) 各 Worker をローカル起動
-pnpm -F @app/api dev
-pnpm -F @app/ingest dev
-pnpm -F @app/web dev
+pnpm -F @cinema/api dev
+pnpm -F @cinema/ingest dev
+pnpm -F @cinema/web dev
 ```
 
 - D1 の実体はローカルは wrangler 管理の SQLite ファイル。Compose の管轄外。
@@ -159,7 +159,9 @@ APP_ENV = "prod"
 ```
 # .dev.vars（例・コミットしない）
 APP_ENV=local
-ANTHROPIC_API_KEY=sk-ant-xxxx
+LLM_PROVIDER=ollama           # 開発既定。本番/ST は gemini
+OLLAMA_BASE_URL=http://localhost:11434
+GEMINI_API_KEY=xxxx           # 品質確定・ST/prod 用
 TRANSIT_API_BASE=http://localhost:1080
 SLACK_WEBHOOK_URL=http://localhost:1081/webhook
 ```
@@ -228,19 +230,19 @@ jobs:
 
       # D1 マイグレーション（ST）
       - name: migrate D1 (st)
-        run: pnpm -F @app/api exec wrangler d1 migrations apply cinema_hashigo_st --env st --remote
+        run: pnpm -F @cinema/api exec wrangler d1 migrations apply cinema_hashigo_st --env st --remote
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       # Workers デプロイ（ST）
       - name: deploy api (st)
-        run: pnpm -F @app/api exec wrangler deploy --env st
+        run: pnpm -F @cinema/api exec wrangler deploy --env st
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: deploy ingest (st)
-        run: pnpm -F @app/ingest exec wrangler deploy --env st
+        run: pnpm -F @cinema/ingest exec wrangler deploy --env st
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -268,18 +270,18 @@ jobs:
       - run: pnpm test
 
       - name: migrate D1 (prod)
-        run: pnpm -F @app/api exec wrangler d1 migrations apply cinema_hashigo_prod --env prod --remote
+        run: pnpm -F @cinema/api exec wrangler d1 migrations apply cinema_hashigo_prod --env prod --remote
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: deploy api (prod)
-        run: pnpm -F @app/api exec wrangler deploy --env prod
+        run: pnpm -F @cinema/api exec wrangler deploy --env prod
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: deploy ingest (prod)
-        run: pnpm -F @app/ingest exec wrangler deploy --env prod
+        run: pnpm -F @cinema/ingest exec wrangler deploy --env prod
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

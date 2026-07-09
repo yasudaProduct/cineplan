@@ -2,7 +2,7 @@
 
 - Version: 0.1
 - Status: Draft
-- 関連: `02_glossary.md` / `05_routing-algorithm.md` / `07_compliance-policy.md`(未作成)
+- 関連: `02_glossary.md` / `05_routing-algorithm.md` / `08_compliance-policy.md`
 
 ## 1. サービス概要
 

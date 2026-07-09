@@ -1,0 +1,15 @@
+[
+  {
+    "httpRequest": {},
+    "httpResponse": {
+      "statusCode": 200,
+      "headers": {
+        "Content-Type": ["application/json"]
+      },
+      "body": {
+        "note": "transit-stub placeholder. 駅すぱあと互換の実期待値は P4-6 で定義する。",
+        "durationMin": 20
+      }
+    }
+  }
+]

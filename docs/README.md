@@ -19,6 +19,7 @@
 | 13 | `13_claude-code-kickoff.md` | Claude Code 起動プロンプト（フェーズ別テンプレ付き） | Draft |
 | 14 | `14_environments-deploy.md` | 環境構成（local/st/prod）・Docker Compose・GitHub Actions | Draft |
 | 15 | `15_folder-structure.md` | リポジトリフォルダ構成（ツリー・パッケージ依存） | Draft |
+| 16 | `16_human-setup-guide.md` | 人間（オーナー）が行う作業の手順（アカウント・課金・規約確認・承認・運用） | Draft |
 
 ※ リポジトリルートに `CLAUDE.md`（Claude Code エントリポイント）あり。
 

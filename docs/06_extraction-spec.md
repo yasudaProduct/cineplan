@@ -10,7 +10,7 @@
 Fetch (static fetch / Browser Rendering)
   → R2 保存 (raw/{theaterId}/{businessDate}/{fetchedAt}.html)
   → 前処理（HTML → 抽出用テキスト）
-  → LLM 抽出（Claude Haiku, JSON mode）
+  → LLM 抽出（既定 Gemini Flash, JSON 構造化出力。ADR-0011。provider は設定値）
   → zod スキーマ検証
   → 妥当性検証（レンジ・件数）
   → 正規化（24時超え時刻・名寄せ）
@@ -21,7 +21,7 @@ Fetch (static fetch / Browser Rendering)
 
 ## 2. 前処理（トークン圧縮）
 
-目的: LLM 入力トークンを減らしコストと誤抽出を抑える。**やりすぎて情報を落とすくらいなら素通しに近い方が安全**（Haiku のコンテキストには余裕がある）。
+目的: LLM 入力トークンを減らしコストと誤抽出を抑える。**やりすぎて情報を落とすくらいなら素通しに近い方が安全**（Gemini Flash のコンテキストには余裕がある。無料枠 1M TPM に対し1回 in 50k tok 想定）。
 
 1. `<script>` `<style>` `<svg>` `<noscript>` コメントを除去。
 2. 属性は `href` のみ残し他を除去（detail_url 抽出のため）。
@@ -50,9 +50,10 @@ export const ExtractionResult = z.object({
 
 ## 4. プロンプト設計
 
-- 場所: `packages/ingest/src/extraction/prompts/v{N}.ts`。**プロンプトは必ずバージョン番号付きファイルで管理し、ingest_runs.prompt_version に記録する**（過去実行の再現のため）。既存バージョンのファイルは変更せず、修正は新バージョン追加で行う。
-- モデル: `claude-haiku-4-5`（コスト最適。精度不足が観測されたら Sonnet に上げる判断を管理サイトの検証NG率で行う）。
-- 呼出パラメータ: temperature 0、max_tokens は想定件数 × 60 トークン + 500。
+- 場所: `packages/ingest/src/extraction/prompts/v{N}.ts`。**プロンプトは必ずバージョン番号付きファイルで管理し、ingest_runs.prompt_version に記録する**（過去実行の再現のため）。既存バージョンのファイルは変更せず、修正は新バージョン追加で行う。プロンプト本文はプロバイダ非依存に保つ。
+- プロバイダ/モデル: **本番/ST 既定 Google Gemini Flash（無料ティア。ADR-0011）、ローカル開発は Ollama 既定**。呼び出しはプロバイダ抽象化した抽出クライアント越しに行い、`provider`（`gemini` | `ollama` | `workers-ai` | `anthropic`）と `model` を設定値（`LLM_PROVIDER` / wrangler var）で切替える。具体モデルID（例: Gemini は `gemini-flash` 系、Ollama は `qwen2.5` 等）は実装時に確定する。精度不足は管理サイトの検証NG率で観測し、上位モデル/別プロバイダへ差し替える（抽象化済みのため容易）。
+- 呼出パラメータ: temperature 0。JSON 構造化出力は Gemini の `responseMimeType=application/json` + `responseSchema`（§3 の zod を JSON Schema 化）で担保する。出力上限は想定件数 × 60 トークン + 500 目安。
+- 記録: ingest_runs に provider + model + in/out トークンを残す（プロバイダ横断でコスト・品質を比較）。`llm_model` は provider 込みの識別子（例: `gemini:gemini-flash`）とする。
 
 ### プロンプト v1 骨子
 
@@ -127,4 +128,5 @@ zod 検証通過後、以下の妥当性検証を行う。1つでも NG なら `
 
 - `fixtures/` に各劇場の実 HTML スナップショット（匿名化不要、日付固定）を保存し、抽出のゴールデンテストを作る。
 - LLM 呼出を含むテストは CI では録画リプレイ（保存済みレスポンス）で回し、実 API を叩く統合テストは手動トリガーのみ。
+- **開発は Ollama（ローカル）で高速反復してよい（ADR-0011）が、抽出品質の確定は本番プロバイダ（Gemini）で行う**。プロンプト調整・ゴールデン期待値の作成・新劇場の active 昇格判断は Gemini の出力で検証する（モデル差で結果が変わるため。「Ollama で通った ≠ Gemini で通る」）。CI は provider に依らず録画リプレイ。
 - 新劇場追加時の受入手順: 手動取込 → レビューキューで全件目視 → 3日連続 succeeded で active 昇格。
