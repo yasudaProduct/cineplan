@@ -76,7 +76,7 @@ cinema-hashigo/                          # リポジトリルート
 │   │       ├── worker/                  # Queue consumer: 1劇場1ジョブの取込パイプライン
 │   │       │   ├── fetch.ts             # HTML 取得 → R2 保存（static / rendered 切替・UA・間隔遵守）
 │   │       │   ├── preprocess.ts        # HTML → 抽出用テキスト変換（06 §2）
-│   │       │   ├── extract.ts           # Claude Haiku 呼出・JSON 取得（06 §3-4）
+│   │       │   ├── extract.ts           # 抽出クライアント（provider抽象化・既定Gemini）呼出・JSON取得（06 §3-4）
 │   │       │   ├── validate.ts          # zod 検証 + 妥当性検証 V1〜V6（06 §5）
 │   │       │   ├── normalize.ts         # 24時超え正規化・endTime 補完・titleKey 名寄せ（06 §6）
 │   │       │   └── write.ts             # D1 洗い替え書込 replaceScreenings()（11 §4.1）
@@ -143,7 +143,7 @@ cinema-hashigo/                          # リポジトリルート
 │   ├── 09_roadmap.md                    │
 │   ├── 10_adr/                          │
 │   │   ├── README.md                    │
-│   │   └── 0001-0010.md               ─┘
+│   │   └── 0001-0011.md               ─┘
 │   ├── 11_d1-implementation.md         ─┐ 実装詳細
 │   ├── 12_dp-implementation.md          │ （期待値テスト含む）
 │   ├── 13_claude-code-kickoff.md        │ Claude Code 起動プロンプト

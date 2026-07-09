@@ -52,7 +52,7 @@
   - `06_extraction-spec.md` §2 のタグ簡約・script/style 除去。
   - Done: 入力 HTML が抽出用テキストに変換される（�スナップショットでテスト）。
 - [ ] **P1-3 LLM 抽出**
-  - Haiku 呼出（temperature 0, JSON）。プロンプト v1 を `prompts/v1.ts` に。
+  - 抽出クライアント（provider 抽象化。既定 Gemini Flash・ADR-0011）で呼出（temperature 0, JSON 構造化出力）。プロンプト v1 を `prompts/v1.ts` に。
   - Done: fixture HTML から ExtractionResult が得られ、zod 検証を通る。CI は録画リプレイ。
 - [ ] **P1-4 検証**
   - `06_extraction-spec.md` §5 の V1〜V6。
@@ -158,7 +158,7 @@
 | タイミング | 人間作業（16 の節） | 完了しないとブロックされるタスク |
 |---|---|---|
 | P0 開始前 | 開発ツール・GitHub リポジトリ（§1）→ 確認済み | なし（P0 は着手可能） |
-| P1 開始前 | Anthropic API キー（§2.1）/ 劇場1館目の採用確認（§2.2） | P1-3 / P1-1（実サイト取得） |
+| P1 開始前 | Gemini API キー（§2.1・無料）/ 劇場1館目の採用確認（§2.2） | P1-3 / P1-1（実サイト取得） |
 | ST 有効化まで | Slack Webhook（§2.3。ローカルは slack-stub で可） | P4-0（ST の実通知） |
 | P3 完了後（推奨） | ST 有効化一式（§3） | P4-0 以降すべて |
 | P4 中 | Access 設定（§4.1）/ 駅すぱあとキー（§4.2）/ 劇場2〜5館の採用確認（§4.3） | P4-1 / P4-6 / P4-8 |

@@ -12,7 +12,7 @@
 | 節 | 作業 | タイミング | 所要目安 |
 |---|---|---|---|
 | §1 | 開発ツール・GitHub | P0 前 | 確認済み・作業なし |
-| §2.1 | Anthropic API キー発行 | P1 前 | 10分 |
+| §2.1 | Google Gemini API キー発行 | P1 前 | 10分 |
 | §2.2 | 劇場1館目の採用確認（規約・robots） | P1 前 | 30分 |
 | §2.3 | Slack Webhook 作成 | ST 有効化（§3）まで | 10分 |
 | §3 | ST 環境有効化（課金・トークン・GitHub 設定） | P3 完了後推奨 | 40〜60分 |
@@ -40,14 +40,16 @@
 
 ## 2. P1 開始前
 
-### 2.1 Anthropic API キー（LLM 抽出用）
+### 2.1 Google Gemini API キー（LLM 抽出用。ADR-0011）
 
-1. https://console.anthropic.com にログイン。
-2. Billing（Plans & Billing）で支払い方法を設定、またはクレジットを購入（従量課金。目安は §7）。
-3. API Keys → Create Key。名前例: `cineplan-local`。**local / st / prod でキーを別発行**すると漏洩時の影響を分離でき、コンソール上の使用量も区別できる（推奨）。
-4. リポジトリルートの `.dev.vars.example`（P0-1 で作成される）を `.dev.vars` にコピーし、自分のエディタで記入:
+抽出の既定プロバイダは Google Gemini Flash（無料ティア）。本サービスの負荷（数十リクエスト/日）は無料枠（Flash 系: 1,500 req/日・15 RPM・1M TPM）に対し桁違いに余裕があり、実質 0円で運用できる。
+
+1. https://aistudio.google.com に Google アカウントでログイン。
+2. 「Get API key」→ Create API key。**クレジットカード不要**。無料ティアで始められる。
+3. **無料ティアの注意**: 送信プロンプト（＝抽出対象の HTML）が Google のモデル学習に使われうる（`docs/08 §4` の条件付きで許容 = 公開ページの事実データに限定・個人情報を含むページは対象外）。学習に使わせたくない場合のみ、AI Studio で課金を有効化し有料ティアにする（無料の利点は薄れる）。将来、学習利用を完全に避けたくなったら Cloudflare Workers AI へ差し替え可能（抽出クライアントは抽象化済み）。
+4. リポジトリルートの `.dev.vars.example` を `.dev.vars` にコピーし、自分のエディタで記入:
    ```
-   ANTHROPIC_API_KEY=sk-ant-...
+   GEMINI_API_KEY=...
    ```
 5. Claude Code に「§2.1 完了」と伝える。st/prod への投入は §3.6 / §5.3。
 
@@ -127,7 +129,7 @@ wrangler queues create cinema-ingest-queue-st
 
 ```
 cd packages/ingest
-wrangler secret put ANTHROPIC_API_KEY --env st    # 実行するとプロンプトが出るので値を貼る
+wrangler secret put GEMINI_API_KEY --env st    # 実行するとプロンプトが出るので値を貼る
 wrangler secret put SLACK_WEBHOOK_URL --env st
 # EKISPERT_API_KEY は P4-6 の前でよい（§4.2）
 ```
@@ -181,7 +183,7 @@ api パッケージ側に必要なシークレットが生じた場合は Claude
 
 ```
 cd packages/ingest
-wrangler secret put ANTHROPIC_API_KEY --env prod   # prod 用に別発行したキー
+wrangler secret put GEMINI_API_KEY --env prod   # prod 用に別発行したキー（無料枠は共用でも可）
 wrangler secret put SLACK_WEBHOOK_URL --env prod
 wrangler secret put EKISPERT_API_KEY --env prod
 ```
@@ -210,7 +212,7 @@ Claude Code が用意する文面（利用規約 / プライバシーポリシ�
 | 週次 | ダッシュボードで LLM トークン消費・取込成功率・データ鮮度（N-02）を確認 |
 | 90日毎 | 管理サイトの警告に従い各劇場の robots.txt / 規約を再確認 → terms_checked_at を更新（§2.2 の手順） |
 | 随時 | 劇場からの停止依頼 → 当該劇場を即 `paused`/`retired`（`08` §3） |
-| 随時 | Anthropic / Cloudflare の請求額確認（N-04: 月 3,000 円以内） |
+| 随時 | Google AI Studio（無料枠の消費/超過）・Cloudflare の請求額確認（N-04: 月 3,000 円以内） |
 
 ## 7. ランニングコスト概算（N-04 との突合・2026-07 時点の概算）
 
@@ -218,11 +220,12 @@ Claude Code が用意する文面（利用規約 / プライバシーポリシ�
 |---|---|
 | Workers Paid | $5 ≒ 800円 |
 | 独自ドメイン（年額按分） | 〜130円 |
-| Anthropic API（Haiku・5館×日次1回・1回 in 50k tok 想定） | $8〜12 ≒ 1,200〜1,900円（**実測で補正**） |
+| LLM 抽出（Gemini Flash 無料ティア・5〜10館×日次1回） | 0円（無料枠 1,500 req/日 に対し数十 req/日。ADR-0011） |
 | D1 / R2 / KV / Queues / Browser Rendering | Paid 込み枠内でほぼ 0円 |
 | 駅すぱあと | フリープラン前提 0円（§4.2） |
-| **合計** | **≒ 2,100〜2,800円**（上限 3,000円に対し余裕小） |
+| **合計** | **≒ 900〜950円**（上限 3,000円に対し十分な余裕） |
 
-- LLM が主変動要因。ingest_runs のトークン記録（`03` §3.4）と管理サイトのコストウィジェット（`07` §2.2）が実測の根拠。
-- 超過傾向が出たら `06` §8 の最適化を優先順どおり着手（前日スナップショット diff スキップ → 前処理強化 → プロンプトキャッシュ）。
+- LLM を Gemini 無料枠にしたことで固定費はほぼ Workers Paid のみになり、N-04 に大きく余裕ができた。
+- 監視は残す: ingest_runs の provider/model/トークン記録（`03` §3.4）と管理サイトのコストウィジェット（`07` §2.2）で、無料枠の消費・検証NG率を追う。
+- 無料枠超過（30館超・高頻度化）や有料ティア移行が必要になったら、`06` §8 の最適化（前日スナップショット diff スキップ → 前処理強化 → プロンプトキャッシュ）を優先順どおり着手し、必要なら Workers AI へ差し替える。
 - 劇場を 10 館超に拡げる場合はこの表を再計算してから拡充する。

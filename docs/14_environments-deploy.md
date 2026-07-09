@@ -159,7 +159,8 @@ APP_ENV = "prod"
 ```
 # .dev.vars（例・コミットしない）
 APP_ENV=local
-ANTHROPIC_API_KEY=sk-ant-xxxx
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=xxxx
 TRANSIT_API_BASE=http://localhost:1080
 SLACK_WEBHOOK_URL=http://localhost:1081/webhook
 ```

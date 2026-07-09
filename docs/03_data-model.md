@@ -90,7 +90,7 @@ CREATE TABLE ingest_runs (
   extracted_count INTEGER,
   written_count   INTEGER,
   error_message   TEXT,
-  llm_model       TEXT,                           -- 例: claude-haiku-4-5
+  llm_model       TEXT,                           -- provider込み識別子。例: gemini:gemini-flash
   llm_in_tokens   INTEGER,
   llm_out_tokens  INTEGER,
   prompt_version  TEXT,                           -- 抽出プロンプトのバージョン（06_extraction-spec.md）
