@@ -12,5 +12,9 @@ export function buildVisionV1SystemPrompt(businessMonth: string): string {
 - 時刻は画像の表記のまま抽出してください（"25:10" のような24時超え表記もそのまま）。終了時刻の記載が無ければ endTime は null にしてください。
 - 判読不能・存在しない情報を推測・創作しないでください。読み取れない項目は null にし、気付いた異常（休館日・判読不能等）は notes に記してください。
 - 上映が1件も無ければ screenings を空配列にし、notes に理由を書いてください。
-- 上映形式（字幕/吹替/IMAX 等）が読み取れれば format に、スクリーン名は screenName に入れてください。detailPath は通常 null です。`
+- 上映形式（字幕/吹替/IMAX 等）が読み取れれば format に、スクリーン名は screenName に入れてください。detailPath は通常 null です。
+- 「朝〜」「昼〜」等の具体的な HH:MM が無い編成（祭り・特集等）は startTime を確定できないため出力せず、notes に「具体時刻なしのため未抽出」と記してください。startTime は必ず HH:MM 形式のもののみ。
+
+出力は次の形の JSON のみ:
+{"businessDate":"${businessMonth}-01","screenings":[{"date":"YYYY-MM-DD","movieTitle":"作品名","startTime":"HH:MM","endTime":null,"format":null,"screenName":null,"detailPath":null}],"notes":null}`
 }
