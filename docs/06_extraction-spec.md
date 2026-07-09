@@ -2,22 +2,26 @@
 
 - Version: 0.1
 - 対象: `packages/ingest/src/extraction/`
-- 原則: **構造非依存**。CSS セレクタで狙い撃ちせず、テキスト化した HTML から LLM が意味的に抽出する。サイトのマイナーな構造変更で壊れないことを設計目標とする。
+- 原則: **構造非依存**。CSS セレクタで狙い撃ちせず、テキスト化した HTML または スケジュール画像から LLM が意味的に抽出する。サイトのマイナーな構造変更で壊れないことを設計目標とする。
+- 抽出方式（`theaters.extract_method`。ADR-0012）:
+  - `text`: HTML をテキスト化して抽出（従来）。将来の rendered メジャー館（P4-7）等。
+  - `vision`: 月間スケジュール画像（GIF/JPG/PDF）をマルチモーダルLLMで直接抽出。ミニシアター向け。P1 の1館目シネ・ヌーヴォはこちら。
 
 ## 1. パイプライン全体
 
 ```
 Fetch (static fetch / Browser Rendering)
-  → R2 保存 (raw/{theaterId}/{businessDate}/{fetchedAt}.html)
-  → 前処理（HTML → 抽出用テキスト）
-  → LLM 抽出（既定 Gemini Flash, JSON 構造化出力。ADR-0011。provider は設定値）
+  → R2 保存 (raw/{theaterId}/{businessDate}/{fetchedAt}.html / .gif 等)
+  → 前処理（text: HTML→抽出用テキスト / vision: 画像バイト→base64）
+  → LLM 抽出（既定 Gemini Flash, JSON 構造化出力。ADR-0011。provider・方式は設定値）
   → zod スキーマ検証
   → 妥当性検証（レンジ・件数）
   → 正規化（24時超え時刻・名寄せ）
-  → D1 洗い替え書込（DELETE→INSERT, 03_data-model.md §7）
+  → D1 洗い替え書込（businessDate 別に DELETE→INSERT, 03_data-model.md §7）
 ```
 
-失敗時の分岐は §7。
+- vision で月間画像を扱う場合、1回の抽出が複数 businessDate を含む。抽出結果を screening の `date` でグルーピングし、対象範囲（翌日〜+7）を businessDate ごとに洗い替えする。
+- 失敗時の分岐は §7。
 
 ## 2. 前処理（トークン圧縮）
 
@@ -27,30 +31,38 @@ Fetch (static fetch / Browser Rendering)
 2. 属性は `href` のみ残し他を除去（detail_url 抽出のため）。
 3. 連続空白・空行を圧縮。
 4. テキスト化: HTML タグを保ったまま（表構造の手掛かりになるため Markdown 変換はしない。タグ簡約のみ）。
-5. 上映スケジュールらしき領域の切り出しは**行わない**（ヒューリスティックがサイト依存になるため）。将来コスト最適化が必要になったら「前日スナップショットとの diff が閾値未満なら抽出スキップ」を先に導入する。
+5. 上映スケジュールらしき領域の切り出しは**行わない**（ヒューリスティックがサイト依存になるため）。将来コスト最適化が必要になったら「前日スナップショットとの diff が閾値未満なら抽出スキップ」を先に導入する（画像は Last-Modified / バイト一致で判定）。
+
+### 2.1 vision（画像）の前処理
+- schedule ページ HTML を取得し `image/schedule/*.gif` 等の画像 URL を抽出 → 各画像を取得 → R2 保存。
+- 画像バイトを base64 化して LLM に渡す（Gemini=`inline_data`、Ollama=`images[]`）。過大な画像のみ縮小（初期は素通し。cinenouveau は 1枚 ≒ 23KB GIF）。
+- 画像そのものは複製・再配布しない。抽出するのは事実データのみ（docs/08 §4・原則1）。
 
 ## 3. 抽出スキーマ（zod / packages/shared）
 
 ```ts
 export const ExtractedScreening = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(), // 月間画像等で日付が行に紐づく場合。単日ページは null（ExtractionResult.businessDate を使用）
   movieTitle: z.string().min(1),          // サイト表記のまま。正規化は後段
   startTime: z.string().regex(/^\d{1,2}:\d{2}$/),   // "25:10" 等の24時超え許容
   endTime: z.string().regex(/^\d{1,2}:\d{2}$/).nullable(), // 記載なければ null
   format: z.string().nullable(),          // "IMAX", "字幕" 等。表記のまま
   screenName: z.string().nullable(),      // "スクリーン7" 等。参考情報
-  detailPath: z.string().nullable(),      // 作品詳細への相対/絶対 URL
+  detailPath: z.string().nullable(),      // 作品詳細への相対/絶対 URL（画像抽出では通常 null）
 });
 
 export const ExtractionResult = z.object({
-  businessDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), // ページに明示された対象日
+  businessDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), // 単日ページの対象日 / 月間画像では基準日（当日）
   screenings: z.array(ExtractedScreening),
   notes: z.string().nullable(),           // LLM が気付いた異常（"休館日と記載" 等）
 });
 ```
 
+- 各 screening の実効 businessDate は `screening.date ?? ExtractionResult.businessDate`。正規化（§6）でこの日付を使って UTC 化し、businessDate 別に洗い替える。
+
 ## 4. プロンプト設計
 
-- 場所: `packages/ingest/src/extraction/prompts/v{N}.ts`。**プロンプトは必ずバージョン番号付きファイルで管理し、ingest_runs.prompt_version に記録する**（過去実行の再現のため）。既存バージョンのファイルは変更せず、修正は新バージョン追加で行う。プロンプト本文はプロバイダ非依存に保つ。
+- 場所: `packages/ingest/src/extraction/prompts/`。**プロンプトは必ずバージョン番号付きファイルで管理し、ingest_runs.prompt_version に記録する**（過去実行の再現のため）。既存バージョンのファイルは変更せず、修正は新バージョン追加で行う。プロンプト本文はプロバイダ非依存に保つ。方式別に分ける: `text_v{N}.ts`（HTML）/ `vision_v{N}.ts`（画像）。
 - プロバイダ/モデル: **本番/ST 既定 Google Gemini Flash（無料ティア。ADR-0011）、ローカル開発は Ollama 既定**。呼び出しはプロバイダ抽象化した抽出クライアント越しに行い、`provider`（`gemini` | `ollama` | `workers-ai` | `anthropic`）と `model` を設定値（`LLM_PROVIDER` / wrangler var）で切替える。具体モデルID（例: Gemini は `gemini-flash` 系、Ollama は `qwen2.5` 等）は実装時に確定する。精度不足は管理サイトの検証NG率で観測し、上位モデル/別プロバイダへ差し替える（抽象化済みのため容易）。
 - 呼出パラメータ: temperature 0。JSON 構造化出力は Gemini の `responseMimeType=application/json` + `responseSchema`（§3 の zod を JSON Schema 化）で担保する。出力上限は想定件数 × 60 トークン + 500 目安。
 - 記録: ingest_runs に provider + model + in/out トークンを残す（プロバイダ横断でコスト・品質を比較）。`llm_model` は provider 込みの識別子（例: `gemini:gemini-flash`）とする。
@@ -74,6 +86,21 @@ export const ExtractionResult = z.object({
 
 <schema>{JSON Schema をここに展開}</schema>
 <page url="{scheduleUrl}" businessDate="{businessDate}">{前処理済み HTML}</page>
+```
+
+### プロンプト vision_v1 骨子（画像・ADR-0012）
+
+```
+<role>あなたは映画館の月間スケジュール画像から上映情報を抽出する抽出器です。</role>
+<instructions>
+- 添付画像（月間スケジュール表）から、各上映の date(YYYY-MM-DD)/movieTitle/startTime を
+  すべて読み取り、指定の JSON スキーマのみで出力してください。説明文は出力しないでください。
+- 基準月は {businessMonth}（例 2026-07）。画像に日付が「7/12」等で書かれていれば date に補完してください。
+- 時刻は画像の表記のまま（"25:10" 等もそのまま）。読み取れない項目は null。推測・創作をしないでください。
+- 画像に無い情報を補完しないでください。判読不能な箇所は notes に記してください。
+</instructions>
+<schema>{JSON Schema をここに展開}</schema>
+{画像を inline で添付}
 ```
 
 設計上の要点:

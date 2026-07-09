@@ -42,6 +42,7 @@ CREATE TABLE theaters (
   -- 取込設定
   schedule_url      TEXT NOT NULL,                -- 取得対象 URL（日付はテンプレート可: {date}）
   fetch_method      TEXT NOT NULL DEFAULT 'static', -- static | rendered
+  extract_method    TEXT NOT NULL DEFAULT 'text',  -- text | vision（ADR-0012。migration 0002）
   official_url      TEXT NOT NULL,                -- 利用者誘導先（予約はこちら）
   -- コンプライアンス記録（F-24）
   terms_note        TEXT,                         -- 規約確認メモ
