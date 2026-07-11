@@ -98,7 +98,9 @@ pnpm -F @cinema/web dev
 | R2 バケット | `cinema-snapshots-st` | `cinema-snapshots-prod` |
 | KV | `cinema-kv-st` | `cinema-kv-prod` |
 | Queue | `cinema-ingest-queue-st` | `cinema-ingest-queue-prod` |
-| Pages (web) | `cinema-web-st`（プレビュー相当） | `cinema-web-prod` |
+| Worker (web) | `cinema-web-st` | `cinema-web-prod` |
+
+※ web は当初 Pages 想定だったが、React Router v8 + Workers（公式 Vite プラグイン）に変更（ADR-0013）。ビルド時に `CLOUDFLARE_ENV=st|prod` で対象環境を選択し、`wrangler deploy` でデプロイする。
 
 ### 3.2 wrangler 設定例（api パッケージ）
 
@@ -246,7 +248,11 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      # web（Pages）は Pages 用アクションでデプロイ（別ステップ）
+      - name: deploy web (st)
+        run: pnpm -F @cinema/web run deploy:st   # CLOUDFLARE_ENV=st でビルド → wrangler deploy（ADR-0013）
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 ```
 
 ### 5.5 deploy-prod.yml（タグ + 承認ゲート）
@@ -282,6 +288,12 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: deploy ingest (prod)
         run: pnpm -F @cinema/ingest exec wrangler deploy --env prod
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: deploy web (prod)
+        run: pnpm -F @cinema/web run deploy:prod   # CLOUDFLARE_ENV=prod でビルド → wrangler deploy（ADR-0013）
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

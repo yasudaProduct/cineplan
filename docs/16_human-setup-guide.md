@@ -28,8 +28,8 @@
 
 | 項目 | 状態 |
 |---|---|
-| Node.js | v22.14.0 ✅ |
-| pnpm | 10.33.0 ✅ |
+| Node.js | v22.23.1（nodebrew）✅ ※P3 で v22.14→v22.23.1 に更新（React Router v8 が Node >22.22 を要求。切替は `nodebrew use`。pnpm は `corepack enable pnpm` で再有効化） |
+| pnpm | 10.33.0（corepack）✅ |
 | Docker / Compose | 20.10.24 / v2.17.2 ✅ |
 | wrangler | 4.54.0（グローバル）✅ 任意で更新: `npm i -g wrangler@latest` |
 | gh CLI | 2.86.0・`yasudaProduct` で認証済み（repo/workflow スコープあり）✅ |

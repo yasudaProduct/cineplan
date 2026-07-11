@@ -8,3 +8,9 @@ dist/
 coverage/
 .DS_Store
 .vscode/
+
+# web（React Router + Workers。ADR-0013）の生成物
+.react-router/
+worker-configuration.d.ts
+packages/web/build/
+*.tsbuildinfo

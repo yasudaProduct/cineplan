@@ -133,5 +133,5 @@ LP (/)
 ## 3. 実装メモ
 
 - 管理サイトは ingest パッケージ内に Hono + JSX（SSR のみ、クライアント JS 最小）で同居。凝った SPA にしない。
-- Web は React 系（Next.js on Cloudflare / Remix）。API クライアントと zod 型は packages/shared から import し、モバイルアプリ（Expo）に将来流用する。
+- Web は React 系。**React Router v8（旧 Remix）+ Cloudflare Workers で確定**（ADR-0013・P3-1）。API クライアントと zod 型は packages/shared から import し、モバイルアプリ（Expo）に将来流用する。
 - アイコン・絵文字は本ワイヤー中の記号は意味の指示であり、実装ではアイコンフォント等に置換してよい。

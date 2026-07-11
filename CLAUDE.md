@@ -78,10 +78,10 @@ pnpm install
 # ローカル補助サービス（必要分のみ選択起動）
 docker compose up -d transit-stub slack-stub   # minio は任意
 
-# 開発サーバ（wrangler dev。--persist-to で local D1/R2/KV を全パッケージ共有）
-pnpm -F @cinema/api dev        # :8788
-pnpm -F @cinema/ingest dev     # :8787
-# @cinema/web は P3-1 で Next.js 初期化後に dev を追加
+# 開発サーバ
+pnpm -F @cinema/api dev        # :8788（wrangler dev。--persist-to で local D1/R2/KV を全パッケージ共有）
+pnpm -F @cinema/ingest dev     # :8787（同上）
+pnpm -F @cinema/web dev        # :5173（React Router v8 + Vite。ADR-0013。ブラウザから :8788 の API に fetch）
 
 # 検証（CI と同一）
 pnpm typecheck

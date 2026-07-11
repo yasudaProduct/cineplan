@@ -92,21 +92,21 @@
 
 ## P3. Web 最小版
 
-- [ ] **P3-1 プロジェクト初期化（Next.js on Cloudflare 等）**
-  - shared の型・API クライアントを import。
-  - Done: /plan が表示され API を叩ける。
-- [ ] **P3-2 プラン作成フォーム**
-  - `07_screens.md` §1.3。日付・時間帯・origin/destination・詳細設定。localStorage 復元。
-  - Done: 入力して算出リクエストが送れる。
-- [ ] **P3-3 結果表示（タイムライン）**
-  - §1.4。タブ切替（クライアント内）、公式リンク、集計、終電バッジ。
-  - Done: 複数案がタブ表示され、各上映に公式リンクがある。
-- [ ] **P3-4 infeasible UI**
-  - relaxSuggestions のワンタップ再算出。
-  - Done: 案なし時に緩和提案から再実行できる。
-- [ ] **P3-5 カレンダー連携**
-  - Google render URL 生成、.ics ダウンロード（/plans/{id}/ics）。
-  - Done: 上映が Google カレンダー／.ics に登録できる。
+実装ブランチ `feat/p3-web`（develop 派生）。**React Router v8（旧 Remix）+ Workers に確定**（ADR-0013。Next.js/Pages 想定を変更）。Node は v22.23+ が必要（RR v8 要件。16 §1）。
+
+- [x] **P3-1 プロジェクト初期化（React Router v8 + Workers）**
+  - create-cloudflare 公式テンプレート準拠（wrangler.jsonc・workers/app.ts・Tailwind v4）。shared の型・API クライアント（app/lib/api.ts）。api に CORS 追加（docs/04 設計メモ6）。
+  - Done ✓: 実ブラウザで /plan が表示され、/v1/movies・/v1/plan を fetch できることを確認。SSR で免責フッター（08 §5）も配信。
+- [x] **P3-2 プラン作成フォーム**
+  - `07_screens.md` §1.3 のとおり（今日/明日/日付・時間帯・駅名/📍現在地・ゴール指定しない・詳細設定に到着マージン+作品チップ★must最大3）。
+  - Done ✓: 実ブラウザで送信・作品チップの実 API ロード・リロード後の localStorage 復元を確認。
+- [x] **P3-3 結果表示（タイムライン）**
+  - Done ✓: 3案タブ（🏆最多鑑賞4本/🚃移動少なめ/☕余裕あり）のクライアント内切替、travel/screening/wait の縦タイムライン、各上映に公式リンク、集計行を実データで確認。終電バッジは unit テストで固定（23:00 以降）。
+- [x] **P3-4 infeasible UI**
+  - Done ✓: time_window_too_narrow の理由表示 + 緩和チップのワンタップで時間帯 ±1h 適用 → 自動再算出を実ブラウザで確認。
+- [x] **P3-5 カレンダー連携**
+  - Google render URL（クライアント生成・ADR-0008）+ **.ics も結果画面はクライアント生成**（共有前の Plan に ID が無いため。docs/04 設計メモ3 更新。`GET /plans/{id}/ics` は P5-1 の共有ページ用）。
+  - Done ✓: カレンダーリンクの URL パラメータを実ブラウザで検証、.ics 生成（VEVENT・エスケープ・CRLF）を unit テストで固定。
   - ※ この時点で「自分用のはしごツール」として完成。ここまでを最初の到達点にする。
 
 ## P4. 管理サイト + 劇場拡充
