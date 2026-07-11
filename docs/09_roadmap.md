@@ -53,7 +53,7 @@
   - Done ✓: E2E で画像 → LLM 入力に変換。
 - [x] **P1-3 LLM 抽出**
   - 抽出クライアント（provider 抽象化 gemini/ollama・text/vision。ADR-0011/0012）+ `vision_v1` プロンプト。
-  - Done ✓（コード）: 抽象化・zod 検証・録画リプレイ相当のスタブ E2E で通過。**実 vision の品質確定は Gemini/Ollama ビジョンモデルで別途**（ユーザー LLM 設定後）。
+  - Done ✓: 実 Gemini で cinenouveau を抽出し、時刻/作品/日付（06-27〜07-31 の35日）が実画像と一致・screen_name クリーンを D1 で確認。qwen2.5vl:7b は同画像を抽出不可のため品質基準は Gemini（ADR-0011）。実データ起因の修正: 多スクリーン対応（screen_name・migration 0003）、Gemini の欠落フィールド（.nullish()）、プロンプト堅牢化（date/screenName 取り違え防止）。
 - [x] **P1-4 検証**
   - `06` §5 の V1〜V6（正規化前 V1/2/5/6・正規化後 V3/4）。
   - Done ✓: 単体テスト 18 件で正常通過・各 NG コード検出を固定。
