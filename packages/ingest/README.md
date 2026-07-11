@@ -15,19 +15,24 @@ Cron（prod）/ 手動トリガー（dev・st）
   → Extract    LLM 抽出（既定 Gemini / 開発 Ollama。text/vision）→ ExtractionResult(JSON)
   → Validate   zod 検証 + 妥当性検証 V1〜V6（docs/06 §5）
   → Normalize  24時超え時刻の UTC 化・endTime 補完・title_key 名寄せ
-  → Write      D1 洗い替え（businessDate 別 DELETE→INSERT）
+  → Write      D1 洗い替え（today〜抽出結果の最大日付を範囲に、businessDate 別 DELETE→INSERT）
   → ingest_runs に status / provider・model / トークン / 件数を記録
 ```
 
+- **洗い替え範囲（stale データ防止）**: 抽出に現れた日付だけでなく `today〜抽出結果中の最大日付` を丸ごと洗い替える。休館日や上映が無くなった日、抽出が完全に空だった回も含めて古い screenings を消す（`replaceScreeningsByDate`。docs/03 §7）。
+
 - 失敗は `fetch_failed` / `extraction_failed` / `validation_failed` に分岐。**再抽出は R2 スナップショットから**行い、先方サイトへの再取得は `fetch_failed` 時のみ（docs/06 §7）。検証NGはレビューキュー（`extraction_reviews`）へ。
-- 詳細仕様: `docs/06_extraction-spec.md`、書込アクセス層: `docs/11_d1-implementation.md` §4。
+- **リトライ（docs/06 §7）**: `fetch_failed` は Queue 標準リトライ（`max_retries=3`・指数バックオフ5分〜）に委ね、consumer が最終試行(3回目)でのみ Slack 通知する。`extraction_failed`（LLM APIエラー最大2回・JSONパース不能/zod NG 合算1回）は同一 Worker 呼出内で `extractVisionWithRetries` がフェッチ済み画像を使い回してリトライし、予算超過で確定・通知する（再取得はしない）。`validation_failed` はリトライなし（即レビューキュー）。
+- **多層防御（docs/08）**: cron 対象は `status='active' AND robots_status='allowed' AND terms_checked_at IS NOT NULL` のみ。`ingestTheater` 冒頭でも同条件を再検証し（`assertComplianceGate`）、cron 実行時は Queue 消費時点で `status` が変わっていないか（停止依頼等）も確認する。
+- 詳細仕様: `docs/06_extraction-spec.md`、書込アクセス層: `docs/11_d1-implementation.md` §4、コンプラ: `docs/08_compliance-policy.md` §2。
 
 ## ディレクトリ構成
 
 ```
 src/
 ├── index.ts              # Worker エントリ: fetch(/healthz, POST /admin/ingest) / scheduled(cron dispatch) / queue consumer
-├── env.ts                # Env（bindings + vars/secret）
+├── env.ts                # Env（bindings + vars/secret。ADMIN_TOKEN 含む）
+├── admin-auth.ts         # isAdminAuthorized（/admin/ingest 保護。local 以外は ADMIN_TOKEN 必須・fail closed）
 ├── llm/                  # 抽出クライアント抽象化（provider × 方式。ADR-0011/0012）
 │   ├── types.ts          #   ExtractInput{text?|images?} / LlmResult / LlmClient
 │   ├── gemini.ts         #   Gemini generateContent（responseSchema・inline 画像）
@@ -38,10 +43,12 @@ src/
 ├── worker/               # 取込パイプライン各ステップ
 │   ├── fetch.ts          #   HTTP 取得（取得マナー）+ schedule 画像URL抽出
 │   ├── preprocess.ts     #   imagesToParts(画像→base64) / htmlToText
-│   ├── extract.ts        #   extractVision（LLM 呼出）
+│   ├── extract.ts        #   extractVision / extractVisionWithRetries（LLM 呼出＋リトライ）
 │   ├── validate.ts       #   parseExtraction(zod) / validateExtracted(V1/2/5/6) / validateNormalized(V3/4)
 │   ├── normalize.ts      #   normalize / inBusinessWindow
 │   ├── notify.ts         #   sendSlack
+│   ├── compliance-guard.ts #   assertComplianceGate（robots/terms/status の多層防御。docs/08）
+│   ├── errors.ts         #   TheaterNotFoundError / ComplianceGateError（恒久的失敗＝リトライ対象外）
 │   └── pipeline.ts       #   ingestTheater（統合オーケストレーター）
 └── db/                   # D1 アクセス層（docs/11 §4）
     ├── ingest-runs.ts    #   IngestRun ライフサイクル
@@ -111,9 +118,9 @@ pnpm lint          # Biome
 | Method | Path | 用途 |
 |---|---|---|
 | GET | `/healthz` | 死活監視 |
-| POST | `/admin/ingest?theaterId=` | 手動取込（dev/st のみ。prod は 403） |
+| POST | `/admin/ingest?theaterId=` | 手動取込（dev/st のみ。prod は 403）。**local 以外は `x-admin-token` ヘッダが `ADMIN_TOKEN` と一致しないと 401**（Access 投入前の唯一の防御。docs/09 P4-0・docs/16 §3.6） |
 
-Cron（prod のみ・`docs/14`）は active 劇場を Queue 投入し、consumer が同じパイプラインを実行する。
+Cron（prod のみ・`docs/14`）は `robots_status='allowed'` かつ `terms_checked_at` 設定済みの active 劇場のみ Queue 投入し、consumer が同じパイプラインを実行する（docs/08 の多層防御）。
 
 ## 環境変数
 
@@ -121,7 +128,7 @@ Cron（prod のみ・`docs/14`）は active 劇場を Queue 投入し、consumer
 |---|---|---|
 | binding | `DB` / `KV` / `SNAPSHOTS`(R2) / `INGEST_QUEUE` | `wrangler.toml` |
 | var | `APP_ENV` / `LLM_PROVIDER` / `GEMINI_MODEL` / `OLLAMA_BASE_URL` / `OLLAMA_MODEL` | 非機密 |
-| secret | `GEMINI_API_KEY` / `SLACK_WEBHOOK_URL` | local=`.dev.vars` / st・prod=`wrangler secret` |
+| secret | `GEMINI_API_KEY` / `SLACK_WEBHOOK_URL` / `ADMIN_TOKEN` | local=`.dev.vars` / st・prod=`wrangler secret`。`ADMIN_TOKEN` は local 以外必須 |
 
 ## 関連ドキュメント
 

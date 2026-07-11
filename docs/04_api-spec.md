@@ -186,8 +186,8 @@ components:
           type: object
           required: [start, end]
           properties:
-            start: { type: string, pattern: "^\\d{2}:\\d{2}$", example: "09:00" }
-            end: { type: string, pattern: "^\\d{2}:\\d{2}$", example: "22:00" }
+            start: { type: string, pattern: "^([01]\\d|2[0-3]):[0-5]\\d$", example: "09:00" }
+            end: { type: string, pattern: "^([01]\\d|2[0-3]):[0-5]\\d$", example: "22:00" }
         origin: { $ref: "#/components/schemas/Location" }
         destination:
           oneOf:

@@ -137,4 +137,26 @@ describe('parseExtraction (zod)', () => {
     const r = parseExtraction(result([sc({ movieTitle: 'A', startTime: '10:00' })]))
     expect(r.screenings).toHaveLength(1)
   })
+  it('notes が省略(undefined)されても throw しない（Gemini は required に notes を含めない。review指摘#5の回帰テスト）', () => {
+    const raw = { businessDate: '2026-07-10', screenings: [] } // notes キー自体が無い
+    const r = parseExtraction(raw)
+    expect(r.notes).toBeUndefined()
+  })
+})
+
+describe('validateExtracted — notes が undefined のケース（review指摘#5の回帰テスト）', () => {
+  it('V1: notes 省略(undefined)+0件は EMPTY_WITHOUT_REASON を返す（旧実装は TypeError で落ちていた）', () => {
+    const raw = { businessDate: '2026-07-10', screenings: [] }
+    const parsed = parseExtraction(raw)
+    expect(() => validateExtracted(parsed, {})).not.toThrow()
+    expect(validateExtracted(parsed, {})?.code).toBe('EMPTY_WITHOUT_REASON')
+  })
+  it('V1: notes 省略(undefined)でも中身があれば通過', () => {
+    const raw = {
+      businessDate: '2026-07-10',
+      screenings: [sc({ movieTitle: 'A', startTime: '10:00' })],
+    }
+    const parsed = parseExtraction(raw)
+    expect(validateExtracted(parsed, {})).toBeNull()
+  })
 })

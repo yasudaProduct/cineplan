@@ -20,3 +20,8 @@ TRANSIT_API_BASE=http://localhost:1080
 
 # Slack 通知（検証NG・取込失敗。P1-7 で使用）。ローカルは slack-stub を指す。
 SLACK_WEBHOOK_URL=http://localhost:1081/webhook
+
+# POST /admin/ingest の保護用トークン。APP_ENV=local では未使用（認証スキップ）。
+# ST/prod（APP_ENV!=='local'）は必須。未設定のまま st にデプロイすると 401（fail closed）。
+# ST への投入は wrangler secret put ADMIN_TOKEN --env st（docs/16 §3.6）。
+# ADMIN_TOKEN=xxxxxxxx

@@ -57,6 +57,7 @@
 - `robots_status = disallowed` または規約でスクレイピング明示禁止の劇場は **採用しない**（`retired` として理由を残す）。
 - 判断に迷うケース（グレー）は採用を見送る。スモールスタートで無理に対象を広げない。
 - `terms_checked_at` から90日を超えた劇場は管理サイトで警告表示し、再確認する（規約は改定されうるため）。
+- **コード側の多層防御（人間の運用ミス・レースコンディション対策）**: 「未確認の劇場を active にしない」は運用（人間のプロセス）で担保するのが一次防御だが、取込パイプラインの実行時にも `robots_status='allowed'` かつ `terms_checked_at IS NOT NULL` を検証し、満たさない劇場への fetch は実行前に拒否する（`ingestTheater` 冒頭・docs/11 §5 相当のガード）。加えて cron 実行時は、Queue 投入後〜消費までの間に停止依頼等で `status` が `active` から変わった場合に備え、消費時点で再度 `status='active'` を確認する（`trigger='cron'` のときのみ）。手動取込（`trigger='manual'`）は劇場採用プロセス中の `paused` 劇場を対象にできるため `status` は問わないが、robots/terms のガードは同様に適用する。
 
 ### 判断基準の整理（背景知識）
 

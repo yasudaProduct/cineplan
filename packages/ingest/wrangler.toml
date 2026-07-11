@@ -25,6 +25,9 @@ queue = "cinema-ingest-queue"
 queue = "cinema-ingest-queue"
 max_batch_size = 1
 max_concurrency = 1
+# fetch_failed のみ Queues 標準リトライ対象（docs/06 §7）。3回失敗で consumer 側が ack して打ち切る。
+# 指数バックオフ（初回5分後）は msg.retry({delaySeconds}) で consumer 側が明示的に計算する（queue()）。
+max_retries = 3
 
 [vars]
 APP_ENV = "local"
@@ -59,6 +62,9 @@ queue = "cinema-ingest-queue-st"
 queue = "cinema-ingest-queue-st"
 max_batch_size = 1
 max_concurrency = 1
+# fetch_failed のみ Queues 標準リトライ対象（docs/06 §7）。3回失敗で consumer 側が ack して打ち切る。
+# 指数バックオフ（初回5分後）は msg.retry({delaySeconds}) で consumer 側が明示的に計算する（queue()）。
+max_retries = 3
 
 # --- 本番環境（Cron 有効。21:00 UTC = 06:00 JST。N-02 の鮮度要件）---
 [env.prod]
@@ -88,6 +94,9 @@ queue = "cinema-ingest-queue-prod"
 queue = "cinema-ingest-queue-prod"
 max_batch_size = 1
 max_concurrency = 1
+# fetch_failed のみ Queues 標準リトライ対象（docs/06 §7）。3回失敗で consumer 側が ack して打ち切る。
+# 指数バックオフ（初回5分後）は msg.retry({delaySeconds}) で consumer 側が明示的に計算する（queue()）。
+max_retries = 3
 
 [env.prod.triggers]
 crons = ["0 21 * * *"]

@@ -153,7 +153,7 @@ APP_ENV = "prod"
 
 - コードに直書きしない（`08_compliance-policy.md` §4）。区分は以下。
   - **vars（非機密・平文可）**: `APP_ENV`, 外部APIのベースURL等 → wrangler.toml の `[env.*.vars]`。
-  - **secret（機密）**: LLM APIキー / 駅すぱあとAPIキー / Slack Webhook URL → `wrangler secret put <NAME> --env st|prod`。
+  - **secret（機密）**: LLM APIキー / 駅すぱあとAPIキー / Slack Webhook URL / `ADMIN_TOKEN`（手動取込エンドポイント保護。local 以外は必須・未設定は fail closed で 401） → `wrangler secret put <NAME> --env st|prod`。
 - local は `.dev.vars`（gitignore）でローカル秘密を与える。スタブ向き先もここで上書き。
 
 ```

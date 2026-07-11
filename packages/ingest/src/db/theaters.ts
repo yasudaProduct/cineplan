@@ -52,10 +52,16 @@ export async function getTheater(db: D1Database, id: string): Promise<TheaterRec
   return row ? toRecord(row) : null
 }
 
-// cron の取込対象（active のみ）。
+// cron の取込対象（active かつ robots/規約確認済みのみ。docs/08 の多層防御）。
+// 人間の運用（採用プロセス。docs/08 §2）が一次防御だが、コード側でも
+// robots_status='allowed' かつ terms_checked_at 有り以外は対象から除外する。
 export async function listActiveTheaters(db: D1Database): Promise<TheaterRecordT[]> {
   const { results } = await db
-    .prepare(`SELECT ${COLS} FROM theaters WHERE status='active' ORDER BY id`)
+    .prepare(
+      `SELECT ${COLS} FROM theaters
+        WHERE status='active' AND robots_status='allowed' AND terms_checked_at IS NOT NULL
+        ORDER BY id`,
+    )
     .all<TheaterRow>()
   return results.map(toRecord)
 }
