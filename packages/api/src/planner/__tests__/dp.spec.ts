@@ -139,4 +139,52 @@ describe('k-best ラベリング — docs/12 §7 代替案（maxResults=3）', (
       expect(new Set(movies).size).toBe(movies.length)
     }
   })
+
+  it('同一構成（theater 列 + movie 集合が一致）で上映回だけ異なる Plan は重複として1つに絞る', () => {
+    // 作品X が同一劇場で2回上映 → 単発 Plan [x1] と [x2] は同一構成（docs/05 §6）
+    const dup: Candidate[] = [
+      cand('x1', 'A', 'X', '10:30', '12:30'),
+      cand('x2', 'A', 'X', '14:00', '16:00'),
+    ]
+    const ctx: PlanContext = {
+      ...makeContext(),
+      cands: dup,
+    }
+    const picked = selectPlans(runDp(ctx), { maxResults: 5, cands: dup, mustMovieIds: [] })
+    expect(picked).toHaveLength(1)
+    expect(picked[0].entry.path.map((i) => dup[i].screeningId)).toEqual(['x1'])
+  })
+})
+
+describe('DP の mask 別ビーム保持（docs/05 §3 dp[i][mask] の回帰テスト）', () => {
+  it('must 達成経路が多数の非 must 経路に押し出されず生き残る', () => {
+    // 劇場A に 10:00-11:00 のフィラー10作品（origin→A=0・移動0で高スコア）、
+    // 劇場B に must 作品 MM（origin→B=30・B→A=20 で低スコア）。
+    // 最終上映 FF（A 12:00-13:00）には全11経路が合流し、混在ビーム(K=9)だと
+    // MM 経路が押し出され must_movie_unreachable を誤返却していた。
+    // destination は A からのみ到達可能（単発 [MM] を解に出来なくする）。
+    const cands: Candidate[] = [
+      ...Array.from({ length: 10 }, (_, k) => cand(`m${k}`, 'A', `F${k}`, '10:00', '11:00')),
+      cand('mm', 'B', 'MUST', '10:00', '11:00'),
+      cand('ff', 'A', 'FIN', '12:00', '13:00'),
+    ]
+    const ctx: PlanContext = {
+      cands,
+      mustMovieIds: ['MUST'],
+      arrivalMarginMin: 15,
+      windowStartMin: min('09:00'),
+      windowEndMin: min('19:00'),
+      travel: { between: (a, b) => (a === b ? 0 : 20) },
+      originToTheaterMin: new Map([
+        ['A', 0],
+        ['B', 30],
+      ]),
+      theaterToDestMin: new Map([['A', 0]]), // B からゴール不可
+    }
+    const sols = runDp(ctx)
+    expect(sols.length).toBeGreaterThan(0) // 修正前はここで 0（must経路がビーム落ち）
+    const picked = selectPlans(sols, { maxResults: 3, cands, mustMovieIds: ['MUST'] })
+    expect(picked[0].entry.path.map((i) => cands[i].screeningId)).toEqual(['mm', 'ff'])
+    expect(picked[0].entry.score.count).toBe(2)
+  })
 })

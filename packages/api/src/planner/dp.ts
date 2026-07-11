@@ -15,8 +15,12 @@ export function runDp(ctx: PlanContext): Entry[] {
     return i >= 0 ? 1 << i : 0
   }
 
-  // dp[i] = 「最後に観た上映が cands[i]」の Entry リスト（mask 別に混在、上位 K 保持）
-  const dp: Entry[][] = Array.from({ length: n }, () => [])
+  // dp[i][mask] = 「最後に観た上映が cands[i]・must 達成状況が mask」の Entry リスト（上位K保持）。
+  // 05 §3 の dp[i][mask] どおり必ず mask ごとに分けて保持する。混在させて上位Kを取ると、
+  // must 達成経路が多数の非 must 経路に押し出されてビーム幅で消えうる。
+  const dp: Entry[][][] = Array.from({ length: n }, () =>
+    Array.from({ length: fullMask + 1 }, () => []),
+  )
 
   // 初期化: origin から間に合う各 i（初手 wait は常に 0 = 最遅出発。docs/12 §4）
   for (let i = 0; i < n; i++) {
@@ -25,16 +29,16 @@ export function runDp(ctx: PlanContext): Entry[] {
     if (oto === undefined) continue // 到達不能劇場
     const latestDepart = c.startMin - ctx.arrivalMarginMin - oto
     if (latestDepart < ctx.windowStartMin) continue // 初手に間に合わない
-    dp[i].push({
+    const mask = maskOf(c.movieId)
+    dp[i][mask].push({
       score: { count: 1, travel: oto, wait: 0, endMin: c.endMin, lastId: c.screeningId },
       path: [i],
-      mask: maskOf(c.movieId),
+      mask,
     })
   }
 
   // 遷移: i < j（startMin 昇順なので時系列順が保証される）
   for (let i = 0; i < n; i++) {
-    if (dp[i].length === 0) continue
     const ci = ctx.cands[i]
     for (let j = i + 1; j < n; j++) {
       const cj = ctx.cands[j]
@@ -46,10 +50,9 @@ export function runDp(ctx: PlanContext): Entry[] {
       if (earliestReady > cj.startMin) continue // 連結不可
       const waitJ = cj.startMin - earliestReady
 
-      for (const e of dp[i]) {
-        insertTopK(
-          dp[j],
-          {
+      for (const bucket of dp[i]) {
+        for (const e of bucket) {
+          const next: Entry = {
             score: {
               count: e.score.count + 1,
               travel: e.score.travel + tv,
@@ -59,18 +62,17 @@ export function runDp(ctx: PlanContext): Entry[] {
             },
             path: [...e.path, j],
             mask: e.mask | maskOf(cj.movieId),
-          },
-          K_KEEP,
-        )
+          }
+          insertTopK(dp[j][next.mask], next, K_KEEP) // mask 別バケットに保持
+        }
       }
     }
   }
 
-  // 解の収集: must 全達成（mask==fullMask）かつ終了条件を満たす Entry
+  // 解の収集: must 全達成バケット（dp[i][fullMask]）から終了条件を満たす Entry
   const solutions: Entry[] = []
   for (let i = 0; i < n; i++) {
-    for (const e of dp[i]) {
-      if (e.mask !== fullMask) continue
+    for (const e of dp[i][fullMask]) {
       const last = ctx.cands[i]
       if (ctx.theaterToDestMin) {
         const td = ctx.theaterToDestMin.get(last.theaterId)

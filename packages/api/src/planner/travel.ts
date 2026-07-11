@@ -53,7 +53,9 @@ export function createTravelResolver(
       const ia = idx.get(a)
       const ib = idx.get(b)
       if (matrix && ia !== undefined && ib !== undefined) {
-        return matrix.matrix[ia][ib]
+        // 行・セル欠損や null は行列値として扱わずフォールバックへ（docs/05 §5 の欠損ペア）
+        const v = matrix.matrix[ia]?.[ib]
+        if (typeof v === 'number' && Number.isFinite(v)) return v
       }
       const ga = geo.get(a)
       const gb = geo.get(b)

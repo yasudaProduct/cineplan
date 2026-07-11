@@ -118,8 +118,12 @@ export function runDp(ctx: PlanContext): Entry[] {
     return i >= 0 ? (1 << i) : 0;
   };
 
-  // dp[i] = その i を最後に観る Entry のリスト（mask別に混在、compareScoreで上位K保持）
-  const dp: Entry[][] = Array.from({ length: n }, () => []);
+  // dp[i][mask] = 「最後に観た上映が cands[i]・must 達成状況が mask」の Entry リスト（上位K保持）
+  // ※ 05 §3 の dp[i][mask] どおり、必ず mask ごとに分けて保持する。
+  //   mask を混在させて上位Kを取ると、must 達成経路が多数の非 must 経路に
+  //   押し出されてビーム幅で消え、must_movie_unreachable を誤返却しうる。
+  const dp: Entry[][][] = Array.from({ length: n }, () =>
+    Array.from({ length: fullMask + 1 }, () => []));
 
   // 初期化: origin から間に合う各 i
   for (let i = 0; i < n; i++) {
@@ -128,50 +132,51 @@ export function runDp(ctx: PlanContext): Entry[] {
     if (oto === undefined) continue;                 // 到達不能劇場
     const latestDepart = (c.startMin - ctx.arrivalMarginMin) - oto;
     if (latestDepart < ctx.windowStartMin) continue; // 初手に間に合わない
-    dp[i].push({
+    const mask = maskOf(c.movieId);
+    dp[i][mask].push({
       score: { count: 1, travel: oto, wait: 0, endMin: c.endMin, lastId: c.screeningId },
       path: [i],
-      mask: maskOf(c.movieId),
+      mask,
     });
   }
 
   // 遷移: i < j（startMin昇順なので i<j で時系列前後が保証される）
   for (let i = 0; i < n; i++) {
-    if (dp[i].length === 0) continue;
     const ci = ctx.cands[i];
     for (let j = i + 1; j < n; j++) {
       const cj = ctx.cands[j];
+      // 作品重複は k-best 段階で棄却（05 §3 の妥協）→ ここでは通す
+      // ただし同一作品の即時重複だけは明らかに無駄なので早期スキップ
+      if (ci.movieId === cj.movieId) continue;
       const m = ci.theaterId === cj.theaterId ? M_IN : ctx.arrivalMarginMin;
       const tv = ctx.travel.between(ci.theaterId, cj.theaterId);
       const earliestReady = ci.endMin + tv + m;
       if (earliestReady > cj.startMin) continue;      // 連結不可
+      const waitJ = cj.startMin - earliestReady;
 
-      for (const e of dp[i]) {
-        // 作品重複は k-best 段階で棄却（05 §3 の妥協）→ ここでは通す
-        // ただし同一作品の即時重複だけは明らかに無駄なので早期スキップ
-        if (ci.movieId === cj.movieId) continue;
-        const waitJ = cj.startMin - earliestReady;
-        const next: Entry = {
-          score: {
-            count: e.score.count + 1,
-            travel: e.score.travel + tv,
-            wait: e.score.wait + waitJ,
-            endMin: cj.endMin,
-            lastId: cj.screeningId,
-          },
-          path: [...e.path, j],
-          mask: e.mask | maskOf(cj.movieId),
-        };
-        insertTopK(dp[j], next, K_KEEP);
+      for (const bucket of dp[i]) {
+        for (const e of bucket) {
+          const next: Entry = {
+            score: {
+              count: e.score.count + 1,
+              travel: e.score.travel + tv,
+              wait: e.score.wait + waitJ,
+              endMin: cj.endMin,
+              lastId: cj.screeningId,
+            },
+            path: [...e.path, j],
+            mask: e.mask | maskOf(cj.movieId),
+          };
+          insertTopK(dp[j][next.mask], next, K_KEEP);   // ← mask 別バケットに保持
+        }
       }
     }
   }
 
-  // 解の収集: destination条件を満たし、must全達成(mask==fullMask)の Entry
+  // 解の収集: must全達成バケット（dp[i][fullMask]）から destination 条件を満たす Entry
   const solutions: Entry[] = [];
   for (let i = 0; i < n; i++) {
-    for (const e of dp[i]) {
-      if (e.mask !== fullMask) continue;              // must未達は除外
+    for (const e of dp[i][fullMask]) {
       const last = ctx.cands[i];
       if (ctx.theaterToDestMin) {
         const td = ctx.theaterToDestMin.get(last.theaterId);
@@ -243,7 +248,14 @@ function hasDupMovie(e: Entry): boolean {
   // 実装では Entry に movieIds を持たせるか、クロージャで cands 参照
   ...
 }
-const sig = (e: Entry) => e.path.join('>');   // theater列/movie集合の同一性近似
+// 重複判定は「theater 列 + movie 集合」の完全一致（05 §6）。
+// path（screening index 列）一致の近似だと、同一構成で上映回だけ異なる Plan が
+// 重複として弾かれず複数返ってしまうため、近似にしない。
+const sig = (e: Entry) => {
+  const theaters = e.path.map(i => cands[i].theaterId).join('>');
+  const movies = [...e.path.map(i => cands[i].movieId)].sort().join(',');
+  return `${theaters}|${movies}`;
+};
 ```
 
 - **重複 movie の棄却で解が枯れた場合**: valid が maxResults に満たなくても、あるだけ返す（パディングしない）。most_movies すら重複を含み棄却されるケースは、次善（本数−1）の valid 解を most_movies に繰り上げる。この挙動は ADR-0006 に記録済み。

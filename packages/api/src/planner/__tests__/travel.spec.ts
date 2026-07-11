@@ -48,6 +48,17 @@ describe('createTravelResolver', () => {
     expect(tr.between('thr_a', 'thr_b')).toBe(expected)
     expect(tr.between('thr_a', 'thr_b')).toBeGreaterThan(15)
   })
+
+  it('行列にセル欠損・null が混じっても 0/undefined 扱いせずフォールバックする', () => {
+    const fallback = Math.ceil((haversineKm(A.lat, A.lng, B.lat, B.lng) / 20) * 60) + 15
+    const tr = createTravelResolver([A, B], {
+      theaters: ['thr_a', 'thr_b'],
+      // 1行目はセル欠損（[0] のみ）。null も数値として扱わない
+      matrix: [[0], [null as unknown as number, 0]],
+    })
+    expect(tr.between('thr_a', 'thr_b')).toBe(fallback) // 欠損セル → フォールバック
+    expect(tr.between('thr_b', 'thr_a')).toBe(fallback) // null セル → フォールバック
+  })
 })
 
 describe('resolveEndpointMinutes（P2 暫定解決）', () => {

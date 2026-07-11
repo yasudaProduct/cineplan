@@ -9,14 +9,21 @@ export interface LabeledPlan {
   entry: Entry
 }
 
-const sig = (e: Entry): string => e.path.join('>')
-
 export function selectPlans(
   solutions: Entry[],
   opts: { maxResults: number; cands: Candidate[]; mustMovieIds: string[] },
 ): LabeledPlan[] {
   if (solutions.length === 0) return []
   const { cands, maxResults } = opts
+
+  // 重複判定は「theater 列 + movie 集合」の完全一致（docs/05 §6）。
+  // path（screening index 列）一致の近似だと、同一構成で上映回だけ異なる Plan が
+  // 重複として弾かれず複数返ってしまう。
+  const sig = (e: Entry): string => {
+    const theaters = e.path.map((i) => cands[i].theaterId).join('>')
+    const movies = [...e.path.map((i) => cands[i].movieId)].sort().join(',')
+    return `${theaters}|${movies}`
+  }
 
   const hasDupMovie = (e: Entry): boolean => {
     const ids = e.path.map((i) => cands[i].movieId)
