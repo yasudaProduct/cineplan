@@ -378,8 +378,10 @@ export async function plan(db, kv, req): Promise<PlanResponse> {
 
   const ctx = await buildContext(db, kv, req);   // 候補ロード・travel解決
 
-  // 2. 候補0件（取込済みだが上映なし）
-  if (ctx.cands.length === 0) {
+  // 2. 対象日の上映が0件（取込済みだが上映なし）
+  //    ※ 判定は wish・時間帯フィルタ「前」のロード結果で行う（05 §7 の区別。
+  //      フィルタ後に0件になったケースは time_window_too_narrow 側 = 「時間帯を広げれば観られる」）
+  if (ctx.loadedCount === 0) {
     return { plans: [], infeasible: { reason: 'no_screenings', relaxSuggestions: [] } };
   }
   // 3. must作品が候補に存在しない

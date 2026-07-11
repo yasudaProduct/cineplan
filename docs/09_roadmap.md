@@ -69,26 +69,26 @@
 
 ## P2. ルート算出コア
 
-- [ ] **P2-1 planner: 前処理**
-  - `05_routing-algorithm.md` §2。D1 ロード、wish/must フィルタ、時間帯フィルタ。
-  - Done: 対象日の候補 Screening 配列が得られる。
-- [ ] **P2-2 移動時間の解決（暫定）**
-  - まず TravelMatrix を使わず、劇場間は固定値表（seed）で動かして DP を先に検証。
-  - Done: travel(A,B) が引ける。
-- [ ] **P2-3 DP コア（most_movies のみ）**
-  - `12_dp-implementation.md` §5 の参照実装に従う。定式化は `05_routing-algorithm.md` §3。
-  - Done: `12_dp-implementation.md` §7 の**検算済み期待値テスト**がすべて緑。← 最重要。
-- [ ] **P2-4 infeasible 判定**
-  - §7 の reason 分岐と relaxSuggestions。
-  - Done: データ0件・must 不能・時間帯狭すぎが正しく分岐。
-- [ ] **P2-5 k-best + ラベリング**
-  - §4 のビーム化、§6 の代替案選抜。
-  - Done: most_movies + less_travel + relaxed が返る。重複 Plan が出ない。
-- [ ] **P2-6 `/plan` エンドポイント**
-  - Hono + zod-openapi。`04_api-spec.md` 準拠。レート制限。
-  - Done: POST /plan が仕様通りの JSON を返す。OpenAPI と実装が一致。
-- [ ] **P2-7 `/theaters` `/movies`**
-  - Done: 2エンドポイントが動き、`/movies` は上映時刻を返さない（原則1）。
+実装ブランチ `feat/p2-planner`（develop 派生）。`packages/api/src/planner/`。
+
+- [x] **P2-1 planner: 前処理**
+  - `05_routing-algorithm.md` §2。D1 ロード（11 §5.1）、wish/must フィルタ、時間帯フィルタ、決定的ソート。
+  - Done ✓: 実データ E2E で wish 指定が候補限定として効くことを確認。
+- [x] **P2-2 移動時間の解決（暫定）**
+  - TravelResolver: KV `travel-matrix:v1` があれば参照、欠損は直線距離フォールバック（05 §5）。origin/destination は P2 暫定解決（station=最寄駅一致で walk_min / geo=フォールバック推定。本解決は P4-6）。
+  - Done ✓: 行列参照・同一劇場0分・フォールバック・endpoint 解決をテストで固定。
+- [x] **P2-3 DP コア（most_movies のみ）**
+  - `12_dp-implementation.md` §5 の参照実装どおり（M_IN=10・K_KEEP=9・compareScore が唯一の基準）。
+  - Done ✓: **12 §7 の検算済み期待値テスト全緑**（s1>s3>s5・タイブレーク45<65・windowStart=13:00→最大1本・12:30→s3>s5）。
+- [x] **P2-4 infeasible 判定**
+  - Done ✓: no_screenings は**フィルタ前**の対象日件数で判定（05 §7 の区別。12 §8 を明確化）。must 不在/組込不能・時間帯狭すぎ・dest 超過を単体+E2E で確認。
+- [x] **P2-5 k-best + ラベリング**
+  - Done ✓: most_movies / less_travel(s1>s2) / relaxed(s1>s3) / must_priority(must時) / alt。重複 Plan なし・作品重複解の棄却をテストで固定。
+- [x] **P2-6 `/plan` エンドポイント**
+  - Hono + shared zod（PlanRequest が単一の真実。OpenAPI 生成は将来検討）。`04_api-spec.md` 準拠。IP レート制限 60/min（isolate 内・MVP）。
+  - Done ✓: 実データ E2E で 200（3案）/ 400（zod・未知origin）/ 422（未取込）/ infeasible 200 を確認。
+- [x] **P2-7 `/theaters` `/movies`**
+  - Done ✓: 両エンドポイント動作・`/movies` は作品名のみで上映時刻を返さない（原則1）・Cache-Control 付与。
 
 ## P3. Web 最小版
 

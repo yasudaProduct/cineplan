@@ -79,8 +79,8 @@ pnpm install
 docker compose up -d transit-stub slack-stub   # minio は任意
 
 # 開発サーバ（wrangler dev。--persist-to で local D1/R2/KV を全パッケージ共有）
-pnpm -F @cinema/api dev
-pnpm -F @cinema/ingest dev
+pnpm -F @cinema/api dev        # :8788
+pnpm -F @cinema/ingest dev     # :8787
 # @cinema/web は P3-1 で Next.js 初期化後に dev を追加
 
 # 検証（CI と同一）
@@ -91,6 +91,10 @@ pnpm test            # vitest。DP 期待値（P2-3）含む
 # D1 マイグレーション + seed（ローカル。api パッケージから実行）
 pnpm -F @cinema/api exec wrangler d1 migrations apply cinema_hashigo --local --persist-to ../../.wrangler-state
 pnpm -F @cinema/api exec wrangler d1 execute cinema_hashigo --local --persist-to ../../.wrangler-state --file ../../seeds/dev_seed.sql
+
+# ルート算出の手動確認（P2。api dev 起動中に。データは取込済みの日付で）
+curl -X POST http://localhost:8788/v1/plan -H 'content-type: application/json' \
+  -d '{"date":"2026-07-15","timeWindow":{"start":"09:00","end":"22:00"},"origin":{"type":"station","value":"九条"}}'
 
 # デプロイ（通常は GitHub Actions。ST=main push / prod=v* タグ+承認。手動時のみ↓）
 pnpm -F @cinema/api exec wrangler deploy --env st
