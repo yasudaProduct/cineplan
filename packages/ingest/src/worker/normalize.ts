@@ -9,6 +9,7 @@ export interface PreNormalized {
   endAt: string // UTC ISO
   endAtSource: 'site' | 'estimated'
   format: string | null
+  screenName: string // 単一館は ''。多スクリーン一意性用
   detailUrl: string | null
 }
 
@@ -41,8 +42,9 @@ export function normalize(result: ExtractionResult): PreNormalized[] {
       startAt,
       endAt,
       endAtSource,
-      format: sc.format,
-      detailUrl: sc.detailPath,
+      format: sc.format ?? null,
+      screenName: sc.screenName ?? '',
+      detailUrl: sc.detailPath ?? null,
     })
   }
   return out

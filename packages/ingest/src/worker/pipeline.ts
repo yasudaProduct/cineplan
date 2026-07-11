@@ -131,6 +131,7 @@ export async function ingestTheater(
       endAt: p.endAt,
       endAtSource: p.endAtSource,
       format: p.format,
+      screenName: p.screenName,
       detailUrl: p.detailUrl,
     })
   }

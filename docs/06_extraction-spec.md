@@ -59,6 +59,8 @@ export const ExtractionResult = z.object({
 ```
 
 - 各 screening の実効 businessDate は `screening.date ?? ExtractionResult.businessDate`。正規化（§6）でこの日付を使って UTC 化し、businessDate 別に洗い替える。
+- **任意フィールド（date/endTime/format/screenName/detailPath）は実装では `.nullish()`**（null も欠落も許容）。LLM の構造化出力は空フィールドを null ではなく省略する場合があるため（Gemini 実データで判明）。
+- vision プロンプトでは screenName にスクリーン名のみを入れさせ、date/時刻の混入や businessDate 潰れを防ぐ（複雑な月間グリッドで Gemini が取り違える事例があったため。`vision_v1` で対策）。
 
 ## 4. プロンプト設計
 

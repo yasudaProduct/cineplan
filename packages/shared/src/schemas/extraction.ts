@@ -1,22 +1,23 @@
 import { z } from 'zod'
 
 // LLM 抽出の出力スキーマ（docs/06 §3）。サイト表記のまま。正規化は後段（ingest）。
+// 任意フィールドは .nullish()（null も欠落も許容）。LLM の構造化出力は空フィールドを
+// null ではなく省略(undefined)することがあるため（Gemini 実データで判明）。
 export const ExtractedScreening = z.object({
-  // 月間画像等で各行に日付が紐づく場合に補完（ADR-0012）。単日ページは null。
-  // 実効 businessDate は date ?? ExtractionResult.businessDate。
+  // 月間画像等で各行に日付が紐づく場合に補完（ADR-0012）。実効 businessDate は date ?? ExtractionResult.businessDate。
   date: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .nullable(),
+    .nullish(),
   movieTitle: z.string().min(1),
   startTime: z.string().regex(/^\d{1,2}:\d{2}$/), // "25:10" 等の24時超え許容
   endTime: z
     .string()
     .regex(/^\d{1,2}:\d{2}$/)
-    .nullable(), // 記載なければ null
-  format: z.string().nullable(),
-  screenName: z.string().nullable(),
-  detailPath: z.string().nullable(),
+    .nullish(), // 記載なければ省略/null
+  format: z.string().nullish(),
+  screenName: z.string().nullish(),
+  detailPath: z.string().nullish(),
 })
 export type ExtractedScreening = z.infer<typeof ExtractedScreening>
 

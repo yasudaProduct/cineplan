@@ -29,10 +29,11 @@ export function validateExtracted(
       return { code: 'COUNT_ANOMALY', detail: `件数 ${s.length} が平均 ${ctx.avgCount} を逸脱` }
     }
   }
-  // V5: 同一 (実効date, movieTitle, startTime) の重複
+  // V5: 同一 (実効date, movieTitle, startTime, screen) の重複。
+  // 多スクリーン館は同一作品・同時刻を別スクリーンで上映しうるため screen を含める（migration 0003）。
   const seen = new Set<string>()
   for (const sc of s) {
-    const key = `${sc.date ?? result.businessDate}|${sc.movieTitle}|${sc.startTime}`
+    const key = `${sc.date ?? result.businessDate}|${sc.movieTitle}|${sc.startTime}|${sc.screenName ?? ''}`
     if (seen.has(key)) return { code: 'DUPLICATE_ROW', detail: `重複 ${key}` }
     seen.add(key)
   }

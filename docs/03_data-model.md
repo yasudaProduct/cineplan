@@ -73,10 +73,12 @@ CREATE TABLE screenings (
   end_at         TEXT NOT NULL,                   -- 不明時は start_at + movies.runtime_min + 10分(予告)
   end_at_source  TEXT NOT NULL DEFAULT 'site',    -- site | estimated
   format         TEXT,                            -- 2D | IMAX | 4DX | SUB | DUB 等（複合は "IMAX,SUB"）
+  screen_name    TEXT NOT NULL DEFAULT '',         -- スクリーン名（単一館は ''）。多スクリーン一意性用（migration 0003）
   detail_url     TEXT,                            -- 該当作品の劇場公式ページ（F-07）
   ingest_run_id  TEXT NOT NULL REFERENCES ingest_runs(id),
   created_at     TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE (theater_id, business_date, movie_id, start_at)
+  -- 多スクリーン館は同一作品・同時刻を別スクリーンで上映しうるため screen_name を一意性に含める（ADR-0012 の実データで判明）
+  UNIQUE (theater_id, business_date, movie_id, start_at, screen_name)
 );
 CREATE INDEX idx_screenings_lookup ON screenings (business_date, theater_id, start_at);
 

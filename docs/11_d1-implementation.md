@@ -122,6 +122,22 @@ ALTER TABLE theaters
   CHECK (extract_method IN ('text','vision'));
 ```
 
+### 0003_screenings_screen_name.sql（多スクリーン対応）
+
+多スクリーン館（cinenouveau は2スクリーン）は同一作品・同時刻を別スクリーンで上映しうる。screenings に `screen_name` を追加し、一意性をスクリーン込みにする。SQLite は UNIQUE 変更にテーブル再作成が要るが、screenings は洗い替えで再生成されるため DROP→CREATE で作り直す（前方のみ）。
+
+```sql
+DROP INDEX IF EXISTS idx_screenings_lookup;
+DROP INDEX IF EXISTS idx_screenings_movie;
+DROP TABLE screenings;
+CREATE TABLE screenings (
+  ... (03 §3.3 の定義 + screen_name TEXT NOT NULL DEFAULT '') ...
+  UNIQUE (theater_id, business_date, movie_id, start_at, screen_name)
+);
+CREATE INDEX idx_screenings_lookup ON screenings (business_date, theater_id, start_at);
+CREATE INDEX idx_screenings_movie ON screenings (business_date, movie_id);
+```
+
 ### seeds/dev_seed.sql（ローカル専用・マイグレーションではない）
 
 マイグレーション列に入れず、ローカルでのみ次で投入する（ST/prod には流さない）:

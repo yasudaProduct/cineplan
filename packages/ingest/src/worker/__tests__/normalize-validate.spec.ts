@@ -46,6 +46,14 @@ describe('normalize', () => {
     expect(row.endAtSource).toBe('site')
     expect(row.endAt).toBe('2026-07-11T03:30:00.000Z')
   })
+  it('screenName を引き継ぐ（null は ""）', () => {
+    const [a] = normalize(
+      result([sc({ movieTitle: 'A', startTime: '10:00', screenName: 'シネ・ヌーヴォX' })]),
+    )
+    expect(a.screenName).toBe('シネ・ヌーヴォX')
+    const [b] = normalize(result([sc({ movieTitle: 'B', startTime: '10:00' })]))
+    expect(b.screenName).toBe('')
+  })
 })
 
 describe('inBusinessWindow (V3)', () => {
@@ -77,6 +85,11 @@ describe('validateExtracted (V1/V2/V5/V6)', () => {
   it('V5: 同一(date,title,startTime)重複で DUPLICATE_ROW', () => {
     const dup = sc({ movieTitle: 'A', startTime: '10:00' })
     expect(validateExtracted(result([dup, { ...dup }]), {})?.code).toBe('DUPLICATE_ROW')
+  })
+  it('V5: 同時刻同作品でもスクリーンが違えば重複でない（多スクリーン・migration 0003）', () => {
+    const s1 = sc({ movieTitle: 'A', startTime: '10:00', screenName: 'シネ・ヌーヴォ' })
+    const s2 = sc({ movieTitle: 'A', startTime: '10:00', screenName: 'シネ・ヌーヴォX' })
+    expect(validateExtracted(result([s1, s2]), {})).toBeNull()
   })
   it('V6: タイトルに HTML/URL 混入で DIRTY_TITLE', () => {
     expect(

@@ -62,6 +62,7 @@ export const NormalizedScreening = z.object({
   endAt: z.string().datetime(),
   endAtSource: z.enum(['site', 'estimated']),
   format: z.string().nullable(),
+  screenName: z.string(), // 単一館は ''。多スクリーン一意性用（migration 0003）
   detailUrl: z.string().nullable(),
 })
 export type NormalizedScreening = z.infer<typeof NormalizedScreening>

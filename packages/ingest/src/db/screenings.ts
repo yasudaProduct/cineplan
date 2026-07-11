@@ -21,8 +21,8 @@ export async function replaceScreenings(
         .prepare(
           `INSERT INTO screenings
              (id, theater_id, movie_id, business_date, start_at, end_at,
-              end_at_source, format, detail_url, ingest_run_id)
-           VALUES (?,?,?,?,?,?,?,?,?,?)`,
+              end_at_source, format, screen_name, detail_url, ingest_run_id)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
         )
         .bind(
           newId('scr'),
@@ -33,6 +33,7 @@ export async function replaceScreenings(
           r.endAt,
           r.endAtSource,
           r.format ?? null,
+          r.screenName,
           r.detailUrl ?? null,
           runId,
         ),
