@@ -43,29 +43,29 @@
 
 ## P1. 取込最小版（1劇場）
 
-対象は robots.txt/規約を確認済みの静的サイト1劇場（`fetch_method=static`）から始める。
+対象は **シネ・ヌーヴォ**（robots.txt 無し=許容・規約OK・アグリゲーター非経由。ADR-0012 で画像 vision 抽出）。当初の eiga.com は採用不可（robots/規約/アグリゲーター）。実装ブランチ `feat/p1-ingest-cinenouveau`（develop 派生）。
 
-- [ ] **P1-1 Fetch + R2 保存**
-  - schedule_url を取得（間隔・UA・タイムアウトは `08_compliance-policy.md` §3 遵守）→ R2 に保存。
-  - Done: 生 HTML が `raw/{theaterId}/{businessDate}/{fetchedAt}.html` に保存される。
-- [ ] **P1-2 前処理**
-  - `06_extraction-spec.md` §2 のタグ簡約・script/style 除去。
-  - Done: 入力 HTML が抽出用テキストに変換される（�スナップショットでテスト）。
-- [ ] **P1-3 LLM 抽出**
-  - 抽出クライアント（provider 抽象化。既定 Gemini Flash・ADR-0011）で呼出（temperature 0, JSON 構造化出力）。プロンプト v1 を `prompts/v1.ts` に。
-  - Done: fixture HTML から ExtractionResult が得られ、zod 検証を通る。CI は録画リプレイ。
-- [ ] **P1-4 検証**
-  - `06_extraction-spec.md` §5 の V1〜V6。
-  - Done: 正常データは通過、故意に壊した fixture は該当コードで弾かれる。
-- [ ] **P1-5 正規化 + D1 洗い替え書込**
-  - 24時超え時刻、endTime 補完、title_key 名寄せ、DELETE→INSERT。
-  - Done: 1劇場・翌日分が screenings に入り、再実行しても重複しない。
+- [x] **P1-1 Fetch + R2 保存**
+  - schedule ページ HTML + スケジュール画像を取得（正直UA・同一ホスト5秒間隔・30sタイムアウト。`08` §3）→ R2 保存。
+  - Done ✓: 実 cinenouveau を取得し `raw/{theaterId}/{businessDate}/{fetchedAt}.html`/`.gif` に保存を E2E 確認。
+- [x] **P1-2 前処理**
+  - vision: 画像→base64（`imagesToParts`）。text: タグ簡約（`htmlToText`・将来の rendered 用）。
+  - Done ✓: E2E で画像 → LLM 入力に変換。
+- [x] **P1-3 LLM 抽出**
+  - 抽出クライアント（provider 抽象化 gemini/ollama・text/vision。ADR-0011/0012）+ `vision_v1` プロンプト。
+  - Done ✓: 実 Gemini で cinenouveau を抽出し、時刻/作品/日付（06-27〜07-31 の35日）が実画像と一致・screen_name クリーンを D1 で確認。qwen2.5vl:7b は同画像を抽出不可のため品質基準は Gemini（ADR-0011）。実データ起因の修正: 多スクリーン対応（screen_name・migration 0003）、Gemini の欠落フィールド（.nullish()）、プロンプト堅牢化（date/screenName 取り違え防止）。
+- [x] **P1-4 検証**
+  - `06` §5 の V1〜V6（正規化前 V1/2/5/6・正規化後 V3/4）。
+  - Done ✓: 単体テスト 18 件で正常通過・各 NG コード検出を固定。
+- [x] **P1-5 正規化 + D1 洗い替え書込**
+  - 24時超え・endTime 補完・title_key 名寄せ・businessDate 別 DELETE→INSERT（月間画像対応）。
+  - Done ✓: E2E で screenings が入り（UTC 正規化・名寄せ 3上映→2作品）、再実行で重複しない（3件のまま）。
 - [ ] **P1-6 Cron + Queues 配線**
-  - Cron が劇場を Queues 投入 → コンシューマが P1-1〜5 を実行 → ingest_runs 記録。
-  - Done: スケジュール実行で1劇場が succeeded になり、ingest_runs に履歴が残る。
-- [ ] **P1-7 失敗ハンドリング + Slack 通知**
-  - `06_extraction-spec.md` §7 のリトライ方針と通知。
-  - Done: fetch 失敗・検証NG が正しい status になり、Slack に飛ぶ。
+  - dispatch（active→Queue）+ consumer + 手動取込（`POST /admin/ingest`）を実装。Cron は prod のみ。
+  - 手動トリガー経路は E2E 確認済み。**実 Queues/Cron 挙動（リトライ等）は ST で確認**（`14` §1）。
+- [x] **P1-7 失敗ハンドリング + Slack 通知**
+  - `06` §7 のリトライ方針・status 分岐・Slack。再抽出は R2 から（先方再取得は fetch_failed のみ）。
+  - Done ✓: 抽出到達不可で `extraction_failed`+error 記録を E2E 確認。Slack は配線済み（未設定時は no-op）。
 
 ## P2. ルート算出コア
 

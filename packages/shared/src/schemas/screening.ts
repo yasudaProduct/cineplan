@@ -11,6 +11,7 @@ export const Screening = z.object({
   endAt: z.string().datetime(),
   endAtSource: z.enum(['site', 'estimated']),
   format: z.string().nullable(),
+  screenName: z.string(), // スクリーン名（単一館は ''）。migration 0003
   detailUrl: z.string().nullable(),
 })
 export type Screening = z.infer<typeof Screening>
