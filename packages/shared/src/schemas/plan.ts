@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
-// "HH:mm"（利用可能時間帯・JST）
-export const HHMM = z.string().regex(/^\d{2}:\d{2}$/)
+// "HH:mm"（利用可能時間帯・JST。24時超え表記は不可。時00〜23・分00〜59。docs/04）
+export const HHMM = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)
 
 // origin / destination（駅名 or 緯度経度）。docs/04 components.schemas.Location
 export const Location = z.object({

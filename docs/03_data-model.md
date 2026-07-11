@@ -169,5 +169,6 @@ CREATE TABLE shared_plans (
 ## 7. 整合性ルール
 
 - screenings の書込は「同一 (theater_id, business_date) を DELETE → INSERT」のトランザクションで置換する（部分更新はしない）。取込は洗い替えが正。
+- **月間画像等 1回の取込結果が複数 business_date にまたがる場合（ADR-0012）は、抽出結果に現れた日付だけでなく「今回の取込が対象とした日（today）〜抽出結果中の最大日付」までの全 business_date を洗い替え対象にする。** 抽出結果が0件の日・今回現れなかった日も含めて DELETE してから INSERT する。抽出に現れた日付だけを置換すると、休館日や上映が無くなった日の古い screenings が残り続け（stale データ）、`/plan` が実在しない上映でルートを組みうるため。抽出結果が完全に空の取込は today 1日分のみを洗い替える（実装: `packages/ingest/src/db/screenings.ts` の `replaceScreeningsByDate`）。
 - 公開 API は `theaters.status = 'active'` の劇場の screenings のみ返す。paused/retired にしても既存データは物理削除しない。
 - extraction_reviews の approve 時は、payload_json を通常の書込パスと同一の関数で反映する（反映ロジックを二重実装しない）。

@@ -19,8 +19,8 @@ export function validateExtracted(
 ): ValidationNg | null {
   const s = result.screenings
 
-  // V1: 0件のとき notes に理由が無い
-  if (s.length === 0 && (result.notes === null || result.notes.trim() === '')) {
+  // V1: 0件のとき notes に理由が無い（notes は null/undefined を同一視して扱う）
+  if (s.length === 0 && (result.notes ?? '').trim() === '') {
     return { code: 'EMPTY_WITHOUT_REASON', detail: '上映0件だが notes に理由なし' }
   }
   // V2: 件数が過去平均の 50〜200% を逸脱（履歴3件以上のとき。avgCount 未定義はスキップ）

@@ -41,25 +41,30 @@ Fetch (static fetch / Browser Rendering)
 ## 3. 抽出スキーマ（zod / packages/shared）
 
 ```ts
+// 時刻は「時 0〜29・分 00〜59」に制約する（24時超え表記は 24:00〜29:59 のみ許容。§6）。
+// 分を \d{2} のまま（00〜99許容）にすると "10:75" 等の LLM 誤生成が regex を素通りし、
+// 正規化（setHours）が silent に別時刻へ丸めてしまうため、時分とも値域を絞る。
+const TIME_RE = /^(2[0-9]|[01]?[0-9]):[0-5]\d$/;
+
 export const ExtractedScreening = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(), // 月間画像等で日付が行に紐づく場合。単日ページは null（ExtractionResult.businessDate を使用）
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(), // 月間画像等で日付が行に紐づく場合。単日ページは null/省略（ExtractionResult.businessDate を使用）
   movieTitle: z.string().min(1),          // サイト表記のまま。正規化は後段
-  startTime: z.string().regex(/^\d{1,2}:\d{2}$/),   // "25:10" 等の24時超え許容
-  endTime: z.string().regex(/^\d{1,2}:\d{2}$/).nullable(), // 記載なければ null
-  format: z.string().nullable(),          // "IMAX", "字幕" 等。表記のまま
-  screenName: z.string().nullable(),      // "スクリーン7" 等。参考情報
-  detailPath: z.string().nullable(),      // 作品詳細への相対/絶対 URL（画像抽出では通常 null）
+  startTime: z.string().regex(TIME_RE),   // "25:10" 等の24時超え許容（時0〜29・分00〜59）
+  endTime: z.string().regex(TIME_RE).nullish(), // 記載なければ null/省略
+  format: z.string().nullish(),           // "IMAX", "字幕" 等。表記のまま
+  screenName: z.string().nullish(),       // "スクリーン7" 等。参考情報
+  detailPath: z.string().nullish(),       // 作品詳細への相対/絶対 URL（画像抽出では通常 null）
 });
 
 export const ExtractionResult = z.object({
   businessDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), // 単日ページの対象日 / 月間画像では基準日（当日）
   screenings: z.array(ExtractedScreening),
-  notes: z.string().nullable(),           // LLM が気付いた異常（"休館日と記載" 等）
+  notes: z.string().nullish(),            // LLM が気付いた異常（"休館日と記載" 等）
 });
 ```
 
 - 各 screening の実効 businessDate は `screening.date ?? ExtractionResult.businessDate`。正規化（§6）でこの日付を使って UTC 化し、businessDate 別に洗い替える。
-- **任意フィールド（date/endTime/format/screenName/detailPath）は実装では `.nullish()`**（null も欠落も許容）。LLM の構造化出力は空フィールドを null ではなく省略する場合があるため（Gemini 実データで判明）。
+- **任意フィールド（screening の date/endTime/format/screenName/detailPath、および ExtractionResult.notes）は実装では `.nullish()`**（null も欠落も許容）。LLM の構造化出力は空フィールドを null ではなく省略する場合がある（Gemini 実データで判明）。**プロバイダの responseSchema の `required` 配列に無いフィールドは、対応する zod 側を必ず `.nullish()` にする**（`.nullable()` のままだと省略時に ZodError → 偽の extraction_failed になる）。V1（EMPTY_WITHOUT_REASON）など notes を参照するコードは `result.notes ?? ''` で null/undefined を同一視する。
 - vision プロンプトでは screenName にスクリーン名のみを入れさせ、date/時刻の混入や businessDate 潰れを防ぐ（複雑な月間グリッドで Gemini が取り違える事例があったため。`vision_v1` で対策）。
 
 ## 4. プロンプト設計
@@ -143,6 +148,10 @@ zod 検証通過後、以下の妥当性検証を行う。1つでも NG なら `
 | 妥当性検証 NG | `validation_failed` | 自動リトライなし | Slack + レビューキュー |
 
 **再取得（先方サイトへの再アクセス）を伴うリトライは fetch_failed のみ。** それ以外は必ず R2 スナップショットを入力にする（N-06 の取得マナー遵守）。
+
+実装（`packages/ingest/src/worker/`）:
+- **fetch_failed**: Queue redelivery を利用する（Worker 側で意図的な再取得は行わない）。`queue()` consumer が `msg.attempts`（1始まり）を見て `msg.attempts < 3` なら `msg.retry({ delaySeconds })`（指数バックオフ: `300 * 2^(attempts-1)` 秒 = 5分・10分…）、`attempts >= 3` で `msg.ack()`（打ち切り）。Slack 通知は 3回目到達時のみ（`fail.ts` の `silent` フラグで attempts<3 は抑止）。手動取込（`trigger='manual'`）は Queue を経由しないため、失敗はその場で即通知・即エラー応答（再試行はユーザーが手動で再実行）。
+- **LLM API エラー / JSON パース不能 / zod NG**: 同一 Worker 呼出内で `extractVisionWithRetries`（`extract.ts`）がループでリトライする。fetch 済みの画像バイト（メモリ上・R2 保存済み）を使い回すため再取得しない。LLM API エラー（`client.extract()` 自体の throw）は最大2回、JSON パース不能（`ExtractionParseError`）と zod NG（`ExtractionResult.parse` の throw）は合算で最大1回（表の2行は同一予算を共有）。全リトライを使い切って初めて `extraction_failed` を確定し Slack 通知する（試行ごとには通知しない）。
 
 ## 8. コスト管理
 

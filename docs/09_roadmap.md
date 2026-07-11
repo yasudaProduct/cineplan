@@ -112,8 +112,9 @@
 ## P4. 管理サイト + 劇場拡充
 
 - [ ] **P4-0 ST 環境有効化**
-  - 人間作業（`16_human-setup-guide.md` §3: Workers Paid・ST リソース・API トークン・GitHub Environments）の完了後に着手。wrangler.toml へ実 ID を反映 → 初回 ST デプロイ + migrate + seed → ST シークレット投入（人間、16 §3.6）→ 手動取込で疎通確認。
-  - Done: ST の /healthz・/plan が応答し、1劇場の手動取込が succeeded になる。
+  - 人間作業（`16_human-setup-guide.md` §3: Workers Paid・ST リソース・API トークン・GitHub Environments）の完了後に着手。wrangler.toml へ実 ID を反映 → 初回 ST デプロイ + migrate + seed → ST シークレット投入（人間、16 §3.6。**`ADMIN_TOKEN` を含む**）→ 手動取込で疎通確認。
+  - **`/admin/ingest` は Access（P4-1）が入るまで `ADMIN_TOKEN` のみが ST 公開時の防御**（local は不要）。ADMIN_TOKEN 未設定のまま ST へデプロイした場合は 401 で fail closed（docs/16 §3.6）。
+  - Done: ST の /healthz・/plan が応答し、`x-admin-token` 付きの手動取込が succeeded になる。
 - [ ] **P4-1 Cloudflare Access 設定**
   - /admin にアクセス制御（IdP は One-time PIN で開始、Google IdP 追加は任意。手順: `16_human-setup-guide.md` §4.1）。
   - Done: 認証なしで /admin が開けない。

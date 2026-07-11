@@ -133,8 +133,12 @@ wrangler queues create cinema-ingest-queue-st
 cd packages/ingest
 wrangler secret put GEMINI_API_KEY --env st    # 実行するとプロンプトが出るので値を貼る
 wrangler secret put SLACK_WEBHOOK_URL --env st
+wrangler secret put ADMIN_TOKEN --env st       # 手動取込エンドポイント保護用。ランダム文字列で可
+                                                #   例: openssl rand -hex 32 で生成
 # EKISPERT_API_KEY は P4-6 の前でよい（§4.2）
 ```
+
+**`ADMIN_TOKEN` は Cloudflare Access（§4.1）を設定する P4-1 より前に ST を公開する場合、必ず設定する。** `POST /admin/ingest` は local（`APP_ENV=local`）以外では `x-admin-token` ヘッダの一致を要求し、未設定のまま ST にデプロイすると常に 401 を返す（fail closed）。手動取込確認時は `curl -H "x-admin-token: <値>" ...` で呼ぶ。
 
 api パッケージ側に必要なシークレットが生じた場合は Claude Code が同じ形式で案内する。
 

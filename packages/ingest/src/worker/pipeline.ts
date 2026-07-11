@@ -5,17 +5,14 @@ import { createReview, recentAvgCount } from '../db/reviews'
 import { replaceScreeningsByDate } from '../db/screenings'
 import { getTheater } from '../db/theaters'
 import type { Env } from '../env'
-import { ExtractionParseError, extractVision } from './extract'
+import { assertComplianceGate } from './compliance-guard'
+import { TheaterNotFoundError } from './errors'
+import { extractVisionWithRetries } from './extract'
 import { fetchSchedule } from './fetch'
 import { normalize } from './normalize'
 import { sendSlack } from './notify'
 import { imagesToParts } from './preprocess'
-import {
-  parseExtraction,
-  type ValidationNg,
-  validateExtracted,
-  validateNormalized,
-} from './validate'
+import { type ValidationNg, validateExtracted, validateNormalized } from './validate'
 
 export interface IngestResult {
   runId: string
@@ -26,24 +23,32 @@ export interface IngestResult {
   error?: string
 }
 
+// fetch_failed の Queues 標準リトライで通知を打ち切るまでの試行数（docs/06 §7）。
+export const FETCH_FAILED_NOTIFY_AT_ATTEMPT = 3
+
 function todayJst(): string {
   return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10)
 }
 
 // 1劇場・1回分の取込（fetch→R2→抽出→検証→正規化→D1 洗い替え）。docs/06 パイプライン。
+// attempt: Queue 消費時点の配信試行回数（1始まり。docs/06 §7 の fetch_failed 通知タイミング判定に使用）。
+// 手動取込は Queue を経由しないため常に 1（＝失敗したら即通知）。
 export async function ingestTheater(
   env: Env,
   theaterId: string,
   trigger: IngestTrigger,
+  attempt = 1,
 ): Promise<IngestResult> {
   const theater = await getTheater(env.DB, theaterId)
-  if (!theater) throw new Error(`theater not found: ${theaterId}`)
+  if (!theater) throw new TheaterNotFoundError(theaterId)
+  assertComplianceGate(theater, trigger) // 多層防御（docs/08 §0・§2）
 
   const businessDate = todayJst()
   const businessMonth = businessDate.slice(0, 7)
   const runId = await createIngestRun(env.DB, { theaterId, businessDate, trigger })
 
-  // 1. Fetch（失敗時のみ先方再取得のリトライ対象。docs/06 §7）
+  // 1. Fetch。失敗時は Queue の再配信に委ねる（Worker 側で意図的な再取得はしない）。
+  //    Slack 通知は最終試行（attempt>=3）でのみ行う（毎回通知しない。docs/06 §7）。
   let fetched: Awaited<ReturnType<typeof fetchSchedule>>
   try {
     fetched = await fetchSchedule({
@@ -59,6 +64,9 @@ export async function ingestTheater(
       'fetch_failed',
       (e as Error).message,
       null,
+      {
+        silent: attempt < FETCH_FAILED_NOTIFY_AT_ATTEMPT,
+      },
     )
   }
 
@@ -85,19 +93,11 @@ export async function ingestTheater(
     )
   }
 
-  // 3. 抽出（vision）
-  let ext: Awaited<ReturnType<typeof extractVision>>
+  // 3〜4. 抽出（vision）+ zod 検証。LLM APIエラー/パース不能/zod NG は関数内でリトライ済み
+  // （docs/06 §7 のリトライ予算。fetch 済み画像の使い回しのみで再取得はしない）。
+  let outcome: Awaited<ReturnType<typeof extractVisionWithRetries>>
   try {
-    ext = await extractVision(env, imagesToParts(fetched.images), businessMonth)
-  } catch (e) {
-    const msg = e instanceof ExtractionParseError ? `parse: ${e.message}` : (e as Error).message
-    return await fail(env, runId, theaterId, theater.name, 'extraction_failed', msg, prefix)
-  }
-
-  // 4. zod 検証（失敗は extraction_failed）
-  let result: ExtractionResult
-  try {
-    result = parseExtraction(ext.parsed)
+    outcome = await extractVisionWithRetries(env, imagesToParts(fetched.images), businessMonth)
   } catch (e) {
     return await fail(
       env,
@@ -105,10 +105,11 @@ export async function ingestTheater(
       theaterId,
       theater.name,
       'extraction_failed',
-      `zod: ${(e as Error).message}`,
+      (e as Error).message,
       prefix,
     )
   }
+  const { ext, result } = outcome
 
   // 5. 妥当性検証 V1/2/5/6（NG はレビューキュー行き＝validation_failed）
   const avgCount = await recentAvgCount(env.DB, theaterId)
@@ -136,8 +137,8 @@ export async function ingestTheater(
     })
   }
 
-  // 8. 洗い替え書込（businessDate 別）
-  const written = await replaceScreeningsByDate(env.DB, theaterId, runId, rows)
+  // 8. 洗い替え書込（businessDate 別。coverageFloor=today で stale データを防ぐ）
+  const written = await replaceScreeningsByDate(env.DB, theaterId, runId, rows, businessDate)
   await completeRun(env.DB, runId, {
     snapshotKey: prefix,
     extractedCount: result.screenings.length,
@@ -164,9 +165,12 @@ async function fail(
   status: 'fetch_failed' | 'extraction_failed',
   msg: string,
   snapshotKey: string | null,
+  opts?: { silent?: boolean },
 ): Promise<IngestResult> {
   await failRun(env.DB, runId, { status, errorMessage: msg, snapshotKey })
-  await sendSlack(env.SLACK_WEBHOOK_URL, `🛑 取込失敗(${status}) ${theaterName}: ${msg}`)
+  if (!opts?.silent) {
+    await sendSlack(env.SLACK_WEBHOOK_URL, `🛑 取込失敗(${status}) ${theaterName}: ${msg}`)
+  }
   return { runId, status, theaterId, error: msg }
 }
 
