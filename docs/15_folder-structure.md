@@ -30,7 +30,8 @@ cinema-hashigo/                          # リポジトリルート
 │   │       │   ├── movie.ts             # Movie
 │   │       │   ├── screening.ts         # Screening / CandidateScreening
 │   │       │   ├── plan.ts              # PlanRequest / Plan / Leg（ScreeningLeg / TravelLeg / WaitLeg）/ Score / PlanLabel
-│   │       │   └── extraction.ts        # ExtractionResult / ExtractedScreening
+│   │       │   ├── extraction.ts        # ExtractionResult / ExtractedScreening
+│   │       │   └── ingest.ts            # ExtractMethod / IngestRunStatus / TheaterRecord / NormalizedScreening 等
 │   │       └── utils/
 │   │           ├── id.ts                # newId()（nanoid ベース、プレフィックス付き短ID）
 │   │           ├── time.ts              # normalizeStart() / toBusinessDate() / titleKey()
@@ -73,15 +74,21 @@ cinema-hashigo/                          # リポジトリルート
 │   │       ├── cron/
 │   │       │   ├── dispatch.ts          # 劇場リストを Queues に投入（劇場単位にジョブ分割）
 │   │       │   └── travel-matrix.ts     # 劇場間移動時間行列の週次計算 → KV 保存（駅すぱあと API）
+│   │       ├── llm/                     # 抽出クライアント抽象化（provider×方式。ADR-0011/0012）
+│   │       │   ├── types.ts             # ExtractInput{ text? | images? } / LlmResult（tokens 含む）
+│   │       │   ├── gemini.ts            # Gemini generateContent（responseSchema・inline_data 画像）
+│   │       │   ├── ollama.ts            # Ollama /api/chat（format=JSON・images[]）
+│   │       │   └── index.ts             # LLM_PROVIDER 分岐・トークン記録
 │   │       ├── worker/                  # Queue consumer: 1劇場1ジョブの取込パイプライン
-│   │       │   ├── fetch.ts             # HTML 取得 → R2 保存（static / rendered 切替・UA・間隔遵守）
-│   │       │   ├── preprocess.ts        # HTML → 抽出用テキスト変換（06 §2）
-│   │       │   ├── extract.ts           # 抽出クライアント（provider抽象化・既定Gemini）呼出・JSON取得（06 §3-4）
+│   │       │   ├── fetch.ts             # HTML/画像 取得 → R2 保存（static / rendered・UA・間隔遵守）
+│   │       │   ├── preprocess.ts        # text: HTML→テキスト / vision: 画像→base64（06 §2）
+│   │       │   ├── extract.ts           # llm クライアント呼出・ExtractionResult 取得（06 §3-4）
 │   │       │   ├── validate.ts          # zod 検証 + 妥当性検証 V1〜V6（06 §5）
 │   │       │   ├── normalize.ts         # 24時超え正規化・endTime 補完・titleKey 名寄せ（06 §6）
 │   │       │   └── write.ts             # D1 洗い替え書込 replaceScreenings()（11 §4.1）
-│   │       ├── prompts/
-│   │       │   └── v1.ts                # 抽出プロンプト v1（バージョン固定・既存版変更禁止）
+│   │       ├── extraction/prompts/
+│   │       │   ├── text_v1.ts           # HTML 抽出プロンプト v1（バージョン固定・既存版変更禁止）
+│   │       │   └── vision_v1.ts         # 画像抽出プロンプト v1（ADR-0012）
 │   │       ├── db/                      # D1 書込アクセス層（11 §4）
 │   │       │   ├── ingest-runs.ts       # IngestRun ライフサイクル（queued→succeeded 等）
 │   │       │   ├── movies.ts            # resolveMovieId()（UPSERT + 名寄せ）
@@ -143,7 +150,7 @@ cinema-hashigo/                          # リポジトリルート
 │   ├── 09_roadmap.md                    │
 │   ├── 10_adr/                          │
 │   │   ├── README.md                    │
-│   │   └── 0001-0011.md               ─┘
+│   │   └── 0001-0012.md               ─┘
 │   ├── 11_d1-implementation.md         ─┐ 実装詳細
 │   ├── 12_dp-implementation.md          │ （期待値テスト含む）
 │   ├── 13_claude-code-kickoff.md        │ Claude Code 起動プロンプト

@@ -92,11 +92,16 @@ pnpm test            # vitest。DP 期待値（P2-3）含む
 pnpm -F @cinema/api exec wrangler d1 migrations apply cinema_hashigo --local --persist-to ../../.wrangler-state
 pnpm -F @cinema/api exec wrangler d1 execute cinema_hashigo --local --persist-to ../../.wrangler-state --file ../../seeds/dev_seed.sql
 
+# 手動取込（P1。ingest dev 起動中に。prod は cron のみ）
+#   事前に packages/ingest/.dev.vars を用意（LLM_PROVIDER 等。vision は Ollama ビジョンモデル or Gemini）
+curl -X POST "http://localhost:8787/admin/ingest?theaterId=thr_cnv01"
+
 # デプロイ（通常は GitHub Actions。ST=main push / prod=v* タグ+承認。手動時のみ↓）
 pnpm -F @cinema/api exec wrangler deploy --env st
 ```
 
 - リンタは Biome（`biome.json`）、テストは Vitest（`vitest.config.ts`）、型は各パッケージ `tsc --noEmit`。
+- シークレット/vars は各 Worker 直下の `.dev.vars`（`packages/{api,ingest}/.dev.vars`。gitignore）。ingest は LLM/Slack を使うため要設定。
 - ST/prod の実 D1/KV/R2/Queue ID は未採番（`wrangler.toml` は `REPLACE_WITH_*` プレースホルダ）。採番と反映は P4-0（ST）/ P5-7（prod）。手順は `docs/16_human-setup-guide.md` §3・§5。
 
 ## コーディング方針（軽量）

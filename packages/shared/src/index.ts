@@ -2,6 +2,7 @@
 // 型の単一の真実（CLAUDE.md ハードルール7）。api/ingest/web はここから import する。
 
 export * from './schemas/extraction'
+export * from './schemas/ingest'
 export * from './schemas/movie'
 export * from './schemas/plan'
 export * from './schemas/screening'

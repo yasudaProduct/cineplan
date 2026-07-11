@@ -19,6 +19,7 @@ Claude Code は、ここに記録された決定（特に内部利用限定・�
 | 0009 | 開発DBはD1のまま、Docker Composeは周辺サービス用 | Accepted |
 | 0010 | 3環境(local/st/prod)と GitHub Actions デプロイ | Accepted |
 | 0011 | 抽出 LLM を Gemini Flash（無料枠）に変更（0004 を Supersede） | Accepted |
+| 0012 | 画像スケジュールをマルチモーダルLLMで抽出（0003 を拡張） | Accepted |
 
 ## テンプレート（新規追加時にコピー）
 
