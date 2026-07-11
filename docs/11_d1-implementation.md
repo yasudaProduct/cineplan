@@ -354,14 +354,24 @@ FROM theaters WHERE status = 'active' ORDER BY name;
 
 `/plan` で対象日データがあるかを先に判定し、`no_screenings`(0件) と `DATA_NOT_READY`(未取込) を区別する。
 
+月間画像の vision 取込（ADR-0012）では 1 回の取込が複数 businessDate を書き込む一方、`ingest_runs.business_date` は実行日である。したがって ready 判定は「対象日の screenings が存在する **or** 対象日を business_date とする succeeded run が存在する」とする（前者が月間取込を、後者が日次取込・休館日 0 件を拾う）。
+
 ```ts
-// 「その日の ingest_run が1件も succeeded でない」= 未取込 → 422
-const ready = await db.prepare(
-  `SELECT 1 FROM ingest_runs
-    WHERE business_date=?1 AND status='succeeded' LIMIT 1`
-).bind(businessDate).first();
-if (!ready) throw new ApiError(422, 'DATA_NOT_READY');
+// 対象日の screenings が1件も無く、対象日の succeeded run も無い = 未取込 → 422
+export async function isDataReady(db: D1Database, businessDate: string): Promise<boolean> {
+  const scr = await db.prepare(
+    `SELECT 1 FROM screenings WHERE business_date=?1 LIMIT 1`
+  ).bind(businessDate).first();
+  if (scr) return true;
+  const run = await db.prepare(
+    `SELECT 1 FROM ingest_runs
+      WHERE business_date=?1 AND status='succeeded' LIMIT 1`
+  ).bind(businessDate).first();
+  return run !== null;
+}
 ```
+
+- 既知の限界: 月間取込の対象月内で「休館日等により 0 件」の日は 422 になる（本来は no_screenings が正しい）。運用上まれで実害が小さいため P2 では許容し、必要になったら run にカバー範囲（from/to）を持たせて解消する。
 
 ## 6. レビュー承認の反映
 
