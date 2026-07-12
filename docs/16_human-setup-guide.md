@@ -156,6 +156,7 @@ api パッケージ側に必要なシークレットが生じた場合は Claude
    - Policy: Allow / Include: Emails = 自分のメールアドレス
 3. ログイン方式は既定の **One-time PIN**（メールで PIN が届く）で開始してよい。Google アカウントでログインしたい場合は Settings → Authentication → Login methods → Google を追加（Google Cloud Console での OAuth クライアント作成が必要。任意）。
 4. シークレットウィンドウで `/admin` を開き、認証が要求されることを確認 →「§4.1 完了」。
+5. **Access 有効化後の注意**: `/admin` 配下は curl も Access に遮られる（302）ため、`x-admin-token` 付き curl での手動取込は ST では使えなくなる。以降の手動取込・再抽出・レビューは**管理サイト UI（P4-3〜P4-5）をブラウザで**操作する（Access ログイン後は Cloudflare がリクエストに `Cf-Access-Jwt-Assertion` を付与し、コード側ガードを通過する）。自動化が必要になったら Access の Service Token を発行して `CF-Access-Client-Id/Secret` ヘッダで呼ぶ（P4 時点では不要）。コード側の JWT 署名検証（team ドメイン・aud 検証）は未実施＝エッジの Access が一次防御（強化する場合は P5 で検討）。
 
 ### 4.2 駅すぱあと Web サービス API キー（P4-6 の前。審査に日数がかかるため早めに）
 

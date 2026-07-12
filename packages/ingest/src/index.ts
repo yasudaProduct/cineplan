@@ -1,7 +1,7 @@
-import { isAdminAuthorized } from './admin-auth'
+import { Hono } from 'hono'
+import { adminApp } from './admin'
 import { listActiveTheaters } from './db/theaters'
 import type { Env } from './env'
-import { ComplianceGateError, TheaterNotFoundError } from './worker/errors'
 import { FETCH_FAILED_NOTIFY_AT_ATTEMPT, ingestTheater } from './worker/pipeline'
 
 // fetch_failed の指数バックオフ（初回5分後・以降倍々。docs/06 §7）。
@@ -9,40 +9,26 @@ const RETRY_BASE_DELAY_SECONDS = 300
 
 export type { Env }
 
-// 取込サービス + 管理サイト（P4）。取得マナー（docs/08 §3）を fetch 実装で厳守。
+// 取込サービス + 管理サイト（/admin。P4-2〜P4-5・docs/07 §2）。
+// 取得マナー（docs/08 §3）は fetch 実装と手動取込の1日1回ガードで厳守。
+const app = new Hono<{ Bindings: Env }>()
+
+app.onError((err, c) => {
+  console.error('ingest error', err)
+  return c.text('internal error', 500)
+})
+
+app.get('/healthz', (c) =>
+  c.json({ status: 'ok', service: 'cinema-ingest', env: c.env.APP_ENV ?? 'local' }),
+)
+
+// /admin 配下（UI + 手動取込 API）。エッジの Cloudflare Access（P4-1）+ adminGuard の多層防御。
+app.route('/admin', adminApp)
+
+app.get('/', (c) => c.text('cinema-ingest'))
+
 export default {
-  async fetch(req, env): Promise<Response> {
-    const url = new URL(req.url)
-
-    if (url.pathname === '/healthz') {
-      return Response.json({ status: 'ok', service: 'cinema-ingest', env: env.APP_ENV ?? 'local' })
-    }
-
-    // 手動取込トリガー（P1-6/F-33）。prod は cron のみ。
-    // Access（P4-1）投入前は ADMIN_TOKEN が唯一の防御のため local 以外は必須・未設定は fail closed。
-    // docs/09 P4-0・docs/16 §3.6。
-    // POST /admin/ingest?theaterId=thr_xxx
-    if (req.method === 'POST' && url.pathname === '/admin/ingest') {
-      if (env.APP_ENV === 'prod') return new Response('forbidden (prod は cron)', { status: 403 })
-      if (!isAdminAuthorized(env, req.headers.get('x-admin-token'))) {
-        return new Response('unauthorized', { status: 401 })
-      }
-      const theaterId = url.searchParams.get('theaterId')
-      if (!theaterId) return Response.json({ error: 'theaterId required' }, { status: 400 })
-      try {
-        const result = await ingestTheater(env, theaterId, 'manual')
-        return Response.json(result)
-      } catch (e) {
-        if (e instanceof TheaterNotFoundError)
-          return Response.json({ error: e.message }, { status: 404 })
-        if (e instanceof ComplianceGateError)
-          return Response.json({ error: e.message }, { status: 403 })
-        throw e
-      }
-    }
-
-    return new Response('cinema-ingest', { status: 200 })
-  },
+  fetch: app.fetch,
 
   // Cron（prod のみ有効・docs/14）: active 劇場を Queue 投入（P1-6）。
   async scheduled(_controller, env): Promise<void> {

@@ -95,6 +95,7 @@ pnpm -F @cinema/api exec wrangler d1 execute cinema_hashigo --local --persist-to
 # 手動取込（P1。ingest dev 起動中に。prod は cron のみ）
 #   事前に packages/ingest/.dev.vars を用意（LLM_PROVIDER 等。vision は Ollama ビジョンモデル or Gemini）
 curl -X POST "http://localhost:8787/admin/ingest?theaterId=thr_cnv01"
+# 管理サイト（P4-2〜5。ダッシュボード/劇場マスタ/取込履歴/レビュー）はブラウザで http://localhost:8787/admin
 
 # ルート算出の手動確認（P2。api dev 起動中に。データは取込済みの日付で）
 curl -X POST http://localhost:8788/v1/plan -H 'content-type: application/json' \

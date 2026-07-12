@@ -109,6 +109,7 @@ CREATE TABLE extraction_reviews (
   status         TEXT NOT NULL DEFAULT 'pending', -- pending | approved | rejected
   reason         TEXT NOT NULL,                   -- 検証NGの理由（machine-readable コード + 詳細）
   payload_json   TEXT NOT NULL,                   -- 抽出結果全体（承認時にこれを screenings へ反映）
+  review_note    TEXT,                            -- レビュー時のメモ（破棄は必須。docs/07 §2.5。migration 0004）
   reviewed_at    TEXT,
   created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );

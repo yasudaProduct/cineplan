@@ -39,6 +39,9 @@ importers:
       '@cinema/shared':
         specifier: workspace:*
         version: link:../shared
+      hono:
+        specifier: ^4.12.28
+        version: 4.12.28
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^5.0.0

@@ -54,6 +54,26 @@ export const TheaterRecord = z.object({
 })
 export type TheaterRecord = z.infer<typeof TheaterRecord>
 
+// 劇場マスタの作成/更新フォーム入力（管理サイト P4-3。docs/07 §2.3）。
+// status は含めない: 新規は必ず paused（docs/06 §9 受入手順）、変更は専用アクションで
+// 昇格ゲート（robots/terms。docs/08 §0 ルール5）を通す。
+export const TheaterUpsert = z.object({
+  name: z.string().trim().min(1),
+  shortName: z.string().trim().min(1).nullish(),
+  lat: z.coerce.number().gte(-90).lte(90),
+  lng: z.coerce.number().gte(-180).lte(180),
+  nearestStation: z.string().trim().min(1),
+  walkMinFromSta: z.coerce.number().int().min(0).max(120),
+  scheduleUrl: z.string().url(),
+  fetchMethod: FetchMethod,
+  extractMethod: ExtractMethod,
+  officialUrl: z.string().url(),
+  termsNote: z.string().trim().min(1).nullish(),
+  termsCheckedAt: z.string().datetime().nullish(),
+  robotsStatus: RobotsStatus,
+})
+export type TheaterUpsert = z.infer<typeof TheaterUpsert>
+
 // 正規化済み screening（movie_id 解決・UTC 化済み）。D1 洗い替え書込の入力（docs/11 §4.1）。
 export const NormalizedScreening = z.object({
   businessDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),

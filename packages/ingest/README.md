@@ -30,9 +30,8 @@ Cron（prod）/ 手動トリガー（dev・st）
 
 ```
 src/
-├── index.ts              # Worker エントリ: fetch(/healthz, POST /admin/ingest) / scheduled(cron dispatch) / queue consumer
+├── index.ts              # Worker エントリ（Hono）: /healthz・/admin 配下 / scheduled(cron dispatch) / queue consumer
 ├── env.ts                # Env（bindings + vars/secret。ADMIN_TOKEN 含む）
-├── admin-auth.ts         # isAdminAuthorized（/admin/ingest 保護。local 以外は ADMIN_TOKEN 必須・fail closed）
 ├── llm/                  # 抽出クライアント抽象化（provider × 方式。ADR-0011/0012）
 │   ├── types.ts          #   ExtractInput{text?|images?} / LlmResult / LlmClient
 │   ├── gemini.ts         #   Gemini generateContent（responseSchema・inline 画像）
@@ -46,16 +45,24 @@ src/
 │   ├── extract.ts        #   extractVision / extractVisionWithRetries（LLM 呼出＋リトライ）
 │   ├── validate.ts       #   parseExtraction(zod) / validateExtracted(V1/2/5/6) / validateNormalized(V3/4)
 │   ├── normalize.ts      #   normalize / inBusinessWindow
+│   ├── write.ts          #   normalizeResolveWrite（通常書込パス。取込/承認/再抽出が共用）
+│   ├── reextract.ts      #   reextractFromSnapshot（R2 から再抽出。F-21・先方再取得なし）
 │   ├── notify.ts         #   sendSlack
 │   ├── compliance-guard.ts #   assertComplianceGate（robots/terms/status の多層防御。docs/08）
 │   ├── errors.ts         #   TheaterNotFoundError / ComplianceGateError（恒久的失敗＝リトライ対象外）
 │   └── pipeline.ts       #   ingestTheater（統合オーケストレーター）
+├── admin/                # 管理サイト（P4-2〜P4-5。docs/07 §2。Hono JSX・SSRのみ・client JSなし）
+│   ├── index.tsx         #   ルート集約（dashboard/theaters/runs/reviews + POST アクション + /admin/r2/*）
+│   ├── guard.ts          #   adminGuard（local スキップ / token or Access JWT ヘッダ。docs/14 §4）
+│   ├── components.tsx    #   Layout・StatusChip・Flash・sparkline 等
+│   └── pages/            #   dashboard.tsx / theaters.tsx / runs.tsx / reviews.tsx
 └── db/                   # D1 アクセス層（docs/11 §4）
-    ├── ingest-runs.ts    #   IngestRun ライフサイクル
+    ├── ingest-runs.ts    #   IngestRun ライフサイクル + 一覧/詳細/直近streak/本日取得数
     ├── movies.ts         #   resolveMovieId（名寄せ UPSERT）
-    ├── screenings.ts     #   replaceScreenings / replaceScreeningsByDate（洗い替え）
-    ├── theaters.ts       #   getTheater / listActiveTheaters
-    └── reviews.ts        #   createReview / recentAvgCount（V2 履歴平均）
+    ├── screenings.ts     #   replaceScreeningsByDate（洗い替え）
+    ├── theaters.ts       #   読取 + CRUD（新規は必ず paused・status変更は昇格ゲート経由）
+    ├── reviews.ts        #   createReview / 一覧 / approveReview（通常書込パス）/ reject（メモ必須）
+    └── admin-queries.ts  #   ダッシュボード集計（本日状況・鮮度・トークン日次・規約期限）
 ```
 
 ## LLM プロバイダ抽象化（ADR-0011 / 0012）
@@ -118,7 +125,15 @@ pnpm lint          # Biome
 | Method | Path | 用途 |
 |---|---|---|
 | GET | `/healthz` | 死活監視 |
-| POST | `/admin/ingest?theaterId=` | 手動取込（dev/st のみ。prod は 403）。**local 以外は `x-admin-token` ヘッダが `ADMIN_TOKEN` と一致しないと 401**（Access 投入前の唯一の防御。docs/09 P4-0・docs/16 §3.6） |
+| GET | `/admin` | 管理サイト（ダッシュボード。P4-2） |
+| GET/POST | `/admin/theaters...` | 劇場マスタ CRUD・status変更（active昇格ゲート）・手動取込（P4-3） |
+| GET/POST | `/admin/runs...` | 取込履歴・詳細・R2 再抽出（P4-4） |
+| GET/POST | `/admin/reviews...` | レビューキュー（承認=通常書込パス/破棄=メモ必須。P4-5） |
+| GET | `/admin/r2/raw/...` | R2 スナップショット配信（レビュー突合用。保存 HTML は text/plain で返す） |
+| POST | `/admin/ingest?theaterId=` | 手動取込 API（curl 用に温存。dev/st のみ。prod は 403） |
+
+- **/admin の認証**: 一次防御はエッジの Cloudflare Access（P4-1）。コード側 `adminGuard` は local スキップ / `x-admin-token` 一致 or `Cf-Access-Jwt-Assertion` ヘッダ存在で通す（どちらも無ければ 401 = fail closed。docs/14 §4）。**Access 有効化後の ST では curl 手動取込も Access に遮られる**ため、手動取込はブラウザの管理 UI から行う（docs/16 §4.1）。
+- **手動取込の 1日1回ガード（docs/08 §3）**: 当日すでに先方サイトへ取得済み（trigger=cron/manual の run が存在）の場合、UI は明示チェックボックスによる人間判断を要求する。retry（R2 再抽出）はサイトアクセスが無いためカウントしない。
 
 Cron（prod のみ・`docs/14`）は `robots_status='allowed'` かつ `terms_checked_at` 設定済みの active 劇場のみ Queue 投入し、consumer が同じパイプラインを実行する（docs/08 の多層防御）。
 
