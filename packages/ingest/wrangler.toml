@@ -40,6 +40,8 @@ name = "cinema-ingest-st"
 
 [env.st.vars]
 APP_ENV = "st"
+# 抽出プロバイダを明示（ADR-0011: 本番/ST は Gemini 無料枠）。GEMINI_API_KEY は secret。
+LLM_PROVIDER = "gemini"
 
 [[env.st.d1_databases]]
 binding = "DB"
@@ -72,6 +74,8 @@ name = "cinema-ingest-prod"
 
 [env.prod.vars]
 APP_ENV = "prod"
+# 抽出プロバイダを明示（ADR-0011: 本番/ST は Gemini 無料枠）。GEMINI_API_KEY は secret。
+LLM_PROVIDER = "gemini"
 
 [[env.prod.d1_databases]]
 binding = "DB"
