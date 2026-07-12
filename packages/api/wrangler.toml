@@ -26,12 +26,12 @@ APP_ENV = "st"
 [[env.st.d1_databases]]
 binding = "DB"
 database_name = "cinema_hashigo_st"
-database_id = "REPLACE_WITH_ST_D1_ID"
+database_id = "6af44335-8403-454f-9e4c-36d593e781e8"
 migrations_dir = "../../migrations"
 
 [[env.st.kv_namespaces]]
 binding = "KV"
-id = "REPLACE_WITH_ST_KV_ID"
+id = "d4f5b647d399400889f757e0dc67bfbc"
 
 # --- 本番環境（ID は P5-7 で実値に置換）---
 [env.prod]

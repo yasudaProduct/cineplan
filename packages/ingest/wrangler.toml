@@ -44,11 +44,11 @@ APP_ENV = "st"
 [[env.st.d1_databases]]
 binding = "DB"
 database_name = "cinema_hashigo_st"
-database_id = "REPLACE_WITH_ST_D1_ID"
+database_id = "6af44335-8403-454f-9e4c-36d593e781e8"
 
 [[env.st.kv_namespaces]]
 binding = "KV"
-id = "REPLACE_WITH_ST_KV_ID"
+id = "d4f5b647d399400889f757e0dc67bfbc"
 
 [[env.st.r2_buckets]]
 binding = "SNAPSHOTS"
