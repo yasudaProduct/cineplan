@@ -116,13 +116,16 @@
   - **`/admin/ingest` は Access（P4-1）が入るまで `ADMIN_TOKEN` のみが ST 公開時の防御**（local は不要）。ADMIN_TOKEN 未設定のまま ST へデプロイした場合は 401 で fail closed（docs/16 §3.6）。
   - Done ✓: ST リソース4件作成・ID 反映、api/ingest/web を ST デプロイ（healthz ok）、D1 に 0001-0003 migrate + `seeds/st_seed.sql`（シネ・ヌーヴォ paused）投入。手動取込が **succeeded（145件・実 Gemini）**、D1/R2 検証済み。`/admin/ingest` の 401 fail closed を実機確認。`/plan` は active 劇場0件（cinenouveau paused）のため 422 DATA_NOT_READY を返す＝原則1どおり。**実ルート表示は cinenouveau の active 昇格（採用ゲート・16 §2.2）後**。副次修正: ready.ts を active 限定に（paused-only の 400→422）、ingest ST/prod に LLM_PROVIDER=gemini 明示。
   - 残（P1-6 由来・ST で確認予定）: 実 Queues のネイティブ再試行/Cron 挙動は、active 劇場ができ Cron 経路が回る段階で確認する（consumer は登録済み・retry ロジックは単体テスト済み）。
-- [ ] **P4-1 Cloudflare Access 設定**
-  - /admin にアクセス制御（IdP は One-time PIN で開始、Google IdP 追加は任意。手順: `16_human-setup-guide.md` §4.1）。
-  - Done: 認証なしで /admin が開けない。
-- [ ] **P4-2 ダッシュボード**（`07_screens.md` §2.2）
-- [ ] **P4-3 劇場マスタ CRUD + 手動取込 + 新規は paused 起票**（§2.3、採用プロセスを UI で担保）
-- [ ] **P4-4 取込履歴 + R2 再抽出**（§2.4）
-- [ ] **P4-5 レビューキュー**（§2.5、承認は通常書込パスで反映）
+- [x] **P4-1 Cloudflare Access 設定**（オーナー作業）
+  - Done ✓: ST の `/admin` が未認証で 302（Access ログインへ）・`/healthz` は開放のままを実機確認。Access 有効化後は curl+ADMIN_TOKEN の手動取込も Access に遮られるため、手動取込は管理サイト UI（またはAccess Service Token）経由に（16 §4.1 追記）。コード側ガードは token or `Cf-Access-Jwt-Assertion` 存在（14 §4。JWT 署名検証は P5 検討）。
+- [x] **P4-2 ダッシュボード**（`07_screens.md` §2.2。実装ブランチ `feat/p4-admin`）
+  - Done ✓: 5ウィジェット（本日の取込状況/明日分の鮮度%（N-02）/レビュー待ちバッジ/LLMトークン7日スパークライン/規約90日期限警告）を実データでブラウザ E2E。ingest を Hono 化し `/admin` を Hono JSX SSR（client JS なし・docs/07 §3）で実装。
+- [x] **P4-3 劇場マスタ CRUD + 手動取込 + 新規は paused 起票**（§2.3）
+  - Done ✓: ブラウザ E2E で 新規登録（**paused 強制**）→ active 昇格が robots/terms 不備で**サーバ拒否** → 記入後に active 成功 → retired、を実機確認。手動取込ボタンは 1日1回ガード（当日取得済みなら明示チェック要求。retry は数えない）+ prod 無効。robots.txt 確認リンク。入力は shared の `TheaterUpsert`（zod）で検証。
+- [x] **P4-4 取込履歴 + R2 再抽出**（§2.4）
+  - Done ✓: 一覧（劇場/status フィルタ・50件ページング）・詳細（全項目+スナップショットリンク）。**R2 再抽出をブラウザ E2E**: trigger=`retry` の新 run が succeeded（136件・実 Gemini・**先方サイトへアクセスなし**）。coverageFloor はスナップショット取得日（today だと月跨ぎで新データを消すため。write.ts）。
+- [x] **P4-5 レビューキュー**（§2.5、承認は通常書込パスで反映）
+  - Done ✓: 一覧（pending 既定/all）・詳細は抽出結果テーブルと **R2 画像のインライン突合表示**。承認 E2E: `approveReview` が pipeline と同一の `normalizeResolveWrite` で D1 反映（2件書込・元 run を succeeded 化・D1 で確認）。破棄はメモ必須（サーバ側検証を実機確認・migration 0004 で `review_note` 追加）。プロンプト再実行=同スナップショット再抽出。
 - [ ] **P4-6 TravelMatrix 事前計算バッチ**
   - 駅すぱあと API で劇場間行列を週次生成 → KV。差分更新。P2-2 の固定値表を置換。
   - Done: KV の travel-matrix を planner が参照する。

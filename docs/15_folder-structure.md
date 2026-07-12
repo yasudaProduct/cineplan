@@ -79,30 +79,37 @@ cinema-hashigo/                          # リポジトリルート
 │   │       │   ├── gemini.ts            # Gemini generateContent（responseSchema・inline_data 画像）
 │   │       │   ├── ollama.ts            # Ollama /api/chat（format=JSON・images[]）
 │   │       │   └── index.ts             # LLM_PROVIDER 分岐・トークン記録
-│   │       ├── worker/                  # Queue consumer: 1劇場1ジョブの取込パイプライン
-│   │       │   ├── fetch.ts             # HTML/画像 取得 → R2 保存（static / rendered・UA・間隔遵守）
+│   │       ├── worker/                  # 取込パイプライン各ステップ
+│   │       │   ├── fetch.ts             # HTML/画像 取得（static / rendered・UA・間隔遵守）
 │   │       │   ├── preprocess.ts        # text: HTML→テキスト / vision: 画像→base64（06 §2）
-│   │       │   ├── extract.ts           # llm クライアント呼出・ExtractionResult 取得（06 §3-4）
+│   │       │   ├── extract.ts           # llm 呼出 + リトライ extractVisionWithRetries（06 §3-4・§7）
 │   │       │   ├── validate.ts          # zod 検証 + 妥当性検証 V1〜V6（06 §5）
 │   │       │   ├── normalize.ts         # 24時超え正規化・endTime 補完・titleKey 名寄せ（06 §6）
-│   │       │   └── write.ts             # D1 洗い替え書込 replaceScreenings()（11 §4.1）
+│   │       │   ├── write.ts             # 正規化→movie解決→洗い替えの通常書込パス（承認/再抽出も同一関数）
+│   │       │   ├── reextract.ts         # R2 スナップショットからの再抽出（F-21。先方再取得なし）
+│   │       │   ├── compliance-guard.ts  # robots/terms/status の多層防御（08 §0・§2）
+│   │       │   ├── errors.ts            # TheaterNotFoundError / ComplianceGateError
+│   │       │   ├── notify.ts            # Slack 通知
+│   │       │   └── pipeline.ts          # ingestTheater（統合オーケストレーター）
 │   │       ├── extraction/prompts/
 │   │       │   ├── text_v1.ts           # HTML 抽出プロンプト v1（バージョン固定・既存版変更禁止）
 │   │       │   └── vision_v1.ts         # 画像抽出プロンプト v1（ADR-0012）
 │   │       ├── db/                      # D1 書込アクセス層（11 §4）
-│   │       │   ├── ingest-runs.ts       # IngestRun ライフサイクル（queued→succeeded 等）
+│   │       │   ├── ingest-runs.ts       # IngestRun ライフサイクル + 一覧/詳細/直近streak（管理用読取）
 │   │       │   ├── movies.ts            # resolveMovieId()（UPSERT + 名寄せ）
-│   │       │   ├── screenings.ts        # replaceScreenings()（洗い替え・batch）
-│   │       │   ├── theaters.ts          # 劇場マスタ読取（active のみ・全件）
-│   │       │   └── reviews.ts           # レビューキュー登録・approveReview()（11 §6）
+│   │       │   ├── screenings.ts        # replaceScreeningsByDate()（洗い替え・batch）
+│   │       │   ├── theaters.ts          # 劇場マスタ読取/CRUD（active のみ・全件・作成/更新）
+│   │       │   ├── reviews.ts           # レビューキュー登録・一覧・approveReview()/reject（11 §6）
+│   │       │   └── admin-queries.ts     # ダッシュボード集計（本日状況・鮮度・トークン日次・規約期限）
 │   │       └── admin/                   # 管理サイト（Cloudflare Access 配下・07 §2）
-│   │           ├── index.ts             # /admin ルート登録（Hono）
+│   │           ├── index.tsx            # /admin ルート登録（Hono）+ 手動取込/再抽出/承認 POST
+│   │           ├── guard.ts             # コード側ガード（token or Access JWT ヘッダ。14 §4）
 │   │           ├── pages/
-│   │           │   ├── dashboard.tsx    # ダッシュボード: 取込状況・LLM コスト・規約期限警告
+│   │           │   ├── dashboard.tsx    # ダッシュボード: 取込状況・鮮度・LLM コスト・規約期限警告
 │   │           │   ├── theaters.tsx     # 劇場マスタ CRUD + 手動取込・robots 確認
 │   │           │   ├── runs.tsx         # 取込履歴一覧・詳細・R2 再抽出
-│   │           │   └── reviews.tsx      # レビューキュー: 目視確認・承認・破棄
-│   │           └── components/          # 共通 Hono JSX コンポーネント（レイアウト等）
+│   │           │   └── reviews.tsx      # レビューキュー: 目視確認（画像突合）・承認・破棄
+│   │           └── components.tsx       # 共通 Hono JSX コンポーネント（レイアウト・チップ等）
 │   │
 │   └── web/                             # LP + Web アプリ（React Router v8 + Workers。ADR-0013）
 │       ├── package.json                 # name: @cinema/web

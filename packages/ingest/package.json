@@ -11,7 +11,8 @@
     "deploy:prod": "wrangler deploy --env prod"
   },
   "dependencies": {
-    "@cinema/shared": "workspace:*"
+    "@cinema/shared": "workspace:*",
+    "hono": "^4.12.28"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.0.0",

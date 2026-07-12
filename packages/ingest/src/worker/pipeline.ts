@@ -1,8 +1,6 @@
-import type { ExtractionResult, IngestTrigger, NormalizedScreening } from '@cinema/shared'
+import type { ExtractionResult, IngestTrigger } from '@cinema/shared'
 import { completeRun, createIngestRun, failRun, updateRunStatus } from '../db/ingest-runs'
-import { resolveMovieId } from '../db/movies'
 import { createReview, recentAvgCount } from '../db/reviews'
-import { replaceScreeningsByDate } from '../db/screenings'
 import { getTheater } from '../db/theaters'
 import type { Env } from '../env'
 import { assertComplianceGate } from './compliance-guard'
@@ -13,6 +11,7 @@ import { normalize } from './normalize'
 import { sendSlack } from './notify'
 import { imagesToParts } from './preprocess'
 import { type ValidationNg, validateExtracted, validateNormalized } from './validate'
+import { normalizeResolveWrite } from './write'
 
 export interface IngestResult {
   runId: string
@@ -121,24 +120,9 @@ export async function ingestTheater(
   const ng2 = validateNormalized(pre)
   if (ng2) return await toReview(env, runId, theaterId, theater.name, result, ng2, prefix)
 
-  // 7. movie 解決 → NormalizedScreening[]
-  const rows: NormalizedScreening[] = []
-  for (const p of pre) {
-    const movieId = await resolveMovieId(env.DB, p.movieTitle, null)
-    rows.push({
-      businessDate: p.businessDate,
-      movieId,
-      startAt: p.startAt,
-      endAt: p.endAt,
-      endAtSource: p.endAtSource,
-      format: p.format,
-      screenName: p.screenName,
-      detailUrl: p.detailUrl,
-    })
-  }
-
-  // 8. 洗い替え書込（businessDate 別。coverageFloor=today で stale データを防ぐ）
-  const written = await replaceScreeningsByDate(env.DB, theaterId, runId, rows, businessDate)
+  // 7〜8. 通常書込パス（正規化→movie解決→洗い替え。承認/再抽出と同一関数・write.ts）。
+  //    coverageFloor=fetch 当日で stale データを防ぐ（docs/03 §7）。
+  const written = await normalizeResolveWrite(env.DB, theaterId, runId, result, businessDate)
   await completeRun(env.DB, runId, {
     snapshotKey: prefix,
     extractedCount: result.screenings.length,

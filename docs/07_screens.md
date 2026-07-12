@@ -112,9 +112,9 @@ LP (/)
 
 - 一覧: name / status / fetch_method / 直近取込結果 / terms_checked_at（期限超過は警告色）。
 - 編集フォーム: theaters テーブル全項目 + 操作ボタン:
-  - [手動取込を実行]（F-33。対象日を選択して Queues 投入）
-  - [robots.txt を確認]（対象サイトの robots.txt を表示するだけの補助機能）
-  - status 変更（active/paused/retired）
+  - [手動取込を実行]（F-33。P4-3 実装: Queues を経由せず直接実行・対象日選択なし。月間画像の vision 取込（ADR-0012）は fetch 当日を起点に画像内の全日程を取り込むため対象日指定が意味を持たない。同一サイト1日1回（08 §3）を UI 側でも守るため、当日取得済みなら明示チェックで人間判断を要求。prod は cron のみ＝ボタン無効）
+  - [robots.txt を確認]（対象サイトの robots.txt へのリンク表示のみの補助機能。取得代行はしない）
+  - status 変更（active/paused/retired。**active 昇格は robots_status='allowed' かつ terms_checked_at 記入済みでないとサーバ側で拒否**（08 §0 ルール5）。直近 run の連続 succeeded 数を参考表示し、3日連続成功（06 §9）の判断は人間に委ねる）
 - 新規登録フロー: 登録時は必ず `paused` で作成 → 手動取込 → レビュー全件目視 → 3日連続成功で active 化（06_extraction-spec.md §9 の受入手順を UI で担保）。
 
 ### 2.4 取込履歴
