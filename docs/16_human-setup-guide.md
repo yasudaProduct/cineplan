@@ -97,7 +97,7 @@ wrangler r2 bucket create cinema-snapshots-st
 wrangler queues create cinema-ingest-queue-st
 ```
 
-（コマンドの正確な形は実行時に Claude Code が確認する。）出力された各 ID の wrangler.toml `[env.st]` への反映も Claude Code が行う（リソース ID は機密ではない）。
+（コマンドの正確な形は実行時に Claude Code が確認する。）出力された各 ID の wrangler.toml `[env.st]` への反映も Claude Code が行う（リソース ID は機密ではない）。反映先は api・ingest の `REPLACE_WITH_ST_D1_ID` / `REPLACE_WITH_ST_KV_ID`（D1・KV は両 Worker で同一 ID を共有。R2・Queue は名前参照のため ID 反映不要）。**web（`cinema-web-st`）はバインディング無しの Worker のため、作成するリソースは無い**（デプロイのみ）。
 
 ### 3.3 Cloudflare API トークン発行（ST 用・GitHub Actions デプロイ用）
 
@@ -108,7 +108,7 @@ wrangler queues create cinema-ingest-queue-st
    - Account / Workers KV Storage / Edit
    - Account / Workers R2 Storage / Edit
    - Account / Queues / Edit
-   - Account / Cloudflare Pages / Edit（web のデプロイ方式が Pages の場合）
+   - （web も Worker としてデプロイするため Pages 権限は不要。ADR-0013。「Workers Scripts / Edit」で api・ingest・web の3 Worker すべてを賄う）
 3. 名前 `cineplan-st-deploy` で作成し、トークン値を控える（**再表示不可**）。権限不足は deploy-st の失敗ログで判明するので、その際に追補すればよい。
 4. Account ID を控える: Workers & Pages Overview の右カラム、または `wrangler whoami`。
 
