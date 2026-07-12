@@ -111,10 +111,11 @@
 
 ## P4. 管理サイト + 劇場拡充
 
-- [ ] **P4-0 ST 環境有効化**
+- [x] **P4-0 ST 環境有効化**（実装ブランチ `feat/p4-0-st-setup`）
   - 人間作業（`16_human-setup-guide.md` §3: Workers Paid・ST リソース・API トークン・GitHub Environments）の完了後に着手。wrangler.toml へ実 ID を反映 → 初回 ST デプロイ + migrate + seed → ST シークレット投入（人間、16 §3.6。**`ADMIN_TOKEN` を含む**）→ 手動取込で疎通確認。
   - **`/admin/ingest` は Access（P4-1）が入るまで `ADMIN_TOKEN` のみが ST 公開時の防御**（local は不要）。ADMIN_TOKEN 未設定のまま ST へデプロイした場合は 401 で fail closed（docs/16 §3.6）。
-  - Done: ST の /healthz・/plan が応答し、`x-admin-token` 付きの手動取込が succeeded になる。
+  - Done ✓: ST リソース4件作成・ID 反映、api/ingest/web を ST デプロイ（healthz ok）、D1 に 0001-0003 migrate + `seeds/st_seed.sql`（シネ・ヌーヴォ paused）投入。手動取込が **succeeded（145件・実 Gemini）**、D1/R2 検証済み。`/admin/ingest` の 401 fail closed を実機確認。`/plan` は active 劇場0件（cinenouveau paused）のため 422 DATA_NOT_READY を返す＝原則1どおり。**実ルート表示は cinenouveau の active 昇格（採用ゲート・16 §2.2）後**。副次修正: ready.ts を active 限定に（paused-only の 400→422）、ingest ST/prod に LLM_PROVIDER=gemini 明示。
+  - 残（P1-6 由来・ST で確認予定）: 実 Queues のネイティブ再試行/Cron 挙動は、active 劇場ができ Cron 経路が回る段階で確認する（consumer は登録済み・retry ロジックは単体テスト済み）。
 - [ ] **P4-1 Cloudflare Access 設定**
   - /admin にアクセス制御（IdP は One-time PIN で開始、Google IdP 追加は任意。手順: `16_human-setup-guide.md` §4.1）。
   - Done: 認証なしで /admin が開けない。

@@ -356,16 +356,21 @@ FROM theaters WHERE status = 'active' ORDER BY name;
 
 月間画像の vision 取込（ADR-0012）では 1 回の取込が複数 businessDate を書き込む一方、`ingest_runs.business_date` は実行日である。したがって ready 判定は「対象日の screenings が存在する **or** 対象日を business_date とする succeeded run が存在する」とする（前者が月間取込を、後者が日次取込・休館日 0 件を拾う）。
 
+**いずれの判定も `theaters.status='active'` の劇場に限定する。** `/plan` の候補ロード・origin 解決（§5.1・planner）は active 劇場のみを対象にするため、ready 判定だけが paused 劇場のデータを拾うと不整合になる（採用プロセス中の paused 劇場を手動取込した ST 等で、ready=true なのに active 劇場が 0 件 → origin 解決不能の 400 になる。P4-0 で検出）。active 劇場に限定すれば、そのようなケースは 422 DATA_NOT_READY で明快に返る。
+
 ```ts
-// 対象日の screenings が1件も無く、対象日の succeeded run も無い = 未取込 → 422
+// active 劇場について、対象日の screenings が1件も無く succeeded run も無い = 未取込 → 422
 export async function isDataReady(db: D1Database, businessDate: string): Promise<boolean> {
   const scr = await db.prepare(
-    `SELECT 1 FROM screenings WHERE business_date=?1 LIMIT 1`
+    `SELECT 1 FROM screenings s
+       JOIN theaters t ON t.id = s.theater_id
+      WHERE s.business_date=?1 AND t.status='active' LIMIT 1`
   ).bind(businessDate).first();
   if (scr) return true;
   const run = await db.prepare(
-    `SELECT 1 FROM ingest_runs
-      WHERE business_date=?1 AND status='succeeded' LIMIT 1`
+    `SELECT 1 FROM ingest_runs r
+       JOIN theaters t ON t.id = r.theater_id
+      WHERE r.business_date=?1 AND r.status='succeeded' AND t.status='active' LIMIT 1`
   ).bind(businessDate).first();
   return run !== null;
 }
