@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { cors } from 'hono/cors'
 import type { Env } from './env'
 import { rateLimit } from './middleware/rate-limit'
 import { moviesRoute } from './routes/movies'
@@ -18,6 +19,9 @@ app.onError((err, c) => {
 
 app.get('/healthz', (c) => c.json({ status: 'ok', env: c.env.APP_ENV ?? 'local' }))
 
+// CORS は rateLimit より前（preflight をレート消費させない）。
+// MVP は認証なし公開 API のため全許可（docs/04 設計メモ6。制限導入時は許可リストへ）。
+app.use('/v1/*', cors())
 app.use('/v1/*', rateLimit(60))
 app.route('/v1/theaters', theatersRoute)
 app.route('/v1/movies', moviesRoute)

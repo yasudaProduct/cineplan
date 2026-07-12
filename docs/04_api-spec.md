@@ -294,6 +294,7 @@ components:
 
 1. **infeasible を 200 で返す理由**: 「案がない」はエラーではなく正常な算出結果であり、UI は relaxSuggestions を使って緩和 UI を出す（F-09）。
 2. **共有は POST /plans で二段階**: `/plan` 結果はステートレス。ユーザーが共有ボタンを押した Plan だけを永続化する（不要な書込を避ける）。
-3. **Googleカレンダー URL はクライアント生成**: `ScreeningLeg` の情報だけで `calendar.google.com/render?action=TEMPLATE` URL を組み立てられるため、専用エンドポイントは持たない。.ics のみサーバ生成（複数予定の一括登録のため）。
+3. **Googleカレンダー URL はクライアント生成**: `ScreeningLeg` の情報だけで `calendar.google.com/render?action=TEMPLATE` URL を組み立てられるため、専用エンドポイントは持たない。**結果画面の .ics も同様にクライアント生成**（`Plan` の legs だけで組み立てられ、共有前の Plan には ID が無いため）。`GET /plans/{planId}/ics` は**共有ページ用**（永続化済み Plan が対象。P5-1）。
 4. **キャッシュ**: `GET /theaters` は `Cache-Control: max-age=3600`。`/movies` は `max-age=600`。`POST /plan` はキャッシュしない。
 5. **エラーコード体系**: `VALIDATION_ERROR` / `DATA_NOT_READY`（422）/ `RATE_LIMITED`（429）/ `INTERNAL`（500）。
+6. **CORS**: web は別オリジン（`api.<domain>` と web ドメイン / ローカルは :5173 と :8788）からブラウザ直接 fetch するため、`/v1/*` に CORS を許可する。MVP は認証なしの公開 API のため `Access-Control-Allow-Origin: *`（全許可）。認証・宛先制限を導入する際にオリジン許可リストへ切替える。

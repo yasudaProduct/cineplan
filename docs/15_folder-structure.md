@@ -104,26 +104,33 @@ cinema-hashigo/                          # リポジトリルート
 │   │           │   └── reviews.tsx      # レビューキュー: 目視確認・承認・破棄
 │   │           └── components/          # 共通 Hono JSX コンポーネント（レイアウト等）
 │   │
-│   └── web/                             # LP + Web アプリ（Cloudflare Pages）
+│   └── web/                             # LP + Web アプリ（React Router v8 + Workers。ADR-0013）
 │       ├── package.json                 # name: @cinema/web
-│       ├── tsconfig.json
-│       ├── wrangler.toml                # Pages 設定（st / prod）
-│       └── src/
-│           ├── app/                     # ルーティング（Next.js App Router 想定）
-│           │   ├── page.tsx             # LP (/)（07 §1.2）
-│           │   ├── plan/
-│           │   │   └── page.tsx         # プラン作成・結果一覧 (/plan)（07 §1.3-1.4）
-│           │   └── p/
-│           │       └── [planId]/
-│           │           └── page.tsx     # 共有ページ /p/{id}（07 §1.5、SSR+OGP 必須）
+│       ├── wrangler.jsonc               # Worker 設定（cinema-web / [env.st] / [env.prod]）
+│       ├── vite.config.ts               # @cloudflare/vite-plugin + reactRouter + tailwindcss
+│       ├── react-router.config.ts       # ssr: true（P5-2 の OGP に必要）
+│       ├── tsconfig*.json               # テンプレート準拠（project references・typegen 都合で base 非継承）
+│       ├── workers/
+│       │   └── app.ts                   # Worker エントリ（createRequestHandler）
+│       └── app/
+│           ├── root.tsx                 # ドキュメント殻・共通レイアウト・免責フッター（08 §5）
+│           ├── routes.ts                # ルート定義
+│           ├── entry.server.tsx         # SSR エントリ（bot は全描画待ち）
+│           ├── app.css                  # Tailwind v4 エントリ
+│           ├── routes/
+│           │   ├── home.tsx             # LP (/)（07 §1.2。P3 は簡易版・本実装は P5-3）
+│           │   ├── plan.tsx             # プラン作成・結果一覧 (/plan)（07 §1.3-1.4）
+│           │   └── p.$planId.tsx        # 共有ページ /p/{id}（07 §1.5、SSR+OGP。P5-2）
 │           ├── components/
 │           │   ├── PlanForm.tsx         # 条件入力フォーム（日付/時間帯/地点/映画選択）
-│           │   ├── PlanResult.tsx       # タイムライン表示・タブ切替・集計・終電バッジ
-│           │   ├── CalendarButton.tsx   # Google カレンダー render URL 生成（OAuth 不使用）
-│           │   └── ShareButton.tsx      # Web Share API + 共有 URL 発行
-│           ├── lib/
-│           │   └── api-client.ts        # コア API クライアント（@cinema/shared の型を使用）
-│           └── static/                  # LP 用静的アセット・OGP 雛形等
+│           │   └── PlanResult.tsx       # タイムライン表示・タブ切替・集計・終電バッジ・カレンダー導線
+│           └── lib/
+│               ├── api.ts               # コア API クライアント（@cinema/shared の型を使用）
+│               ├── calendar.ts          # Google カレンダー render URL 生成（OAuth 不使用）
+│               ├── ics.ts               # .ics 生成（結果画面はクライアント生成。04 設計メモ3）
+│               ├── relax.ts             # relaxSuggestions のフォーム適用（07 §1.3）
+│               ├── time.ts              # JST 表示ユーティリティ
+│               └── storage.ts           # 入力値の localStorage 保存/復元
 │
 ├── mocks/                               # Docker Compose スタブ設定（ローカル開発専用）
 │   ├── transit/
@@ -150,7 +157,7 @@ cinema-hashigo/                          # リポジトリルート
 │   ├── 09_roadmap.md                    │
 │   ├── 10_adr/                          │
 │   │   ├── README.md                    │
-│   │   └── 0001-0012.md               ─┘
+│   │   └── 0001-0013.md               ─┘
 │   ├── 11_d1-implementation.md         ─┐ 実装詳細
 │   ├── 12_dp-implementation.md          │ （期待値テスト含む）
 │   ├── 13_claude-code-kickoff.md        │ Claude Code 起動プロンプト
