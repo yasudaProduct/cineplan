@@ -35,7 +35,7 @@ services:
     ports: ["9000:9000", "9001:9001"]
     volumes: ["minio-data:/data"]
 
-  # 駅すぱあとAPI等 外部APIのスタブ（移動時間行列バッチ・origin解決のローカル検証用）
+  # 経路探索API（ls8h Transit API。ADR-0014）のスタブ（移動時間行列バッチ・駅名解決のローカル検証用）
   # OpenAPIモックでもよいが、まずは固定レスポンスのStubで十分。
   transit-stub:
     image: mockserver/mockserver:latest
@@ -63,7 +63,7 @@ volumes:
 ```
 
 - **必須ではないサービスは任意起動**にする（`docker compose up minio transit-stub` のように選択起動）。全部を常時立てる必要はない。
-- スタブへの向き先は環境変数で切り替える（§4）。local では `TRANSIT_API_BASE=http://localhost:1080` 等。
+- スタブへの向き先は環境変数で切り替える（§4）。`TRANSIT_API_BASE` の既定は実 API（`https://api.transit.ls8h.com`・キー不要）。オフライン開発時のみ local で `TRANSIT_API_BASE=http://localhost:1080`（スタブ）に向ける。
 - モックの期待値定義（`mocks/transit/*.json`）はリポジトリ管理し、抽出・行列計算のゴールデンテストと対応させる。
 
 ### 2.2 ローカル起動手順（概略）
@@ -150,12 +150,13 @@ APP_ENV = "prod"
 - デプロイ: `wrangler deploy --env st` / `wrangler deploy --env prod`。
 - ingest パッケージも同様に `[env.st]` / `[env.prod]` を定義（Queues・R2・Cron 含む）。
 - **Cron は本番のみ有効**にし、st では手動トリガー中心にする（st が先方サイトを毎日叩かないようにする。`08` の取得マナー）。st で定期実行を検証したい期間だけ Cron を一時有効化する運用とする。
+- prod の Cron は2本: 取込ディスパッチ（毎日 21:00 UTC = 06:00 JST）と TravelMatrix 週次再生成（月曜 18:00 UTC = 火曜 03:00 JST。ADR-0014）。`scheduled` ハンドラは `controller.cron` の一致で分岐する。st では管理サイトから手動再生成できる。
 
 ## 4. シークレット・環境変数
 
 - コードに直書きしない（`08_compliance-policy.md` §4）。区分は以下。
   - **vars（非機密・平文可）**: `APP_ENV`, 外部APIのベースURL等 → wrangler.toml の `[env.*.vars]`。
-  - **secret（機密）**: LLM APIキー / 駅すぱあとAPIキー / Slack Webhook URL / `ADMIN_TOKEN`（手動取込エンドポイント保護。local 以外は必須・未設定は fail closed で 401） → `wrangler secret put <NAME> --env st|prod`。
+  - **secret（機密）**: LLM APIキー / Slack Webhook URL / `ADMIN_TOKEN`（手動取込エンドポイント保護。local 以外は必須・未設定は fail closed で 401） → `wrangler secret put <NAME> --env st|prod`。
 - **/admin の認証（P4-1 以降）**: 一次防御はエッジの Cloudflare Access（16 §4.1。未認証は 302）。コード側ガード（local 以外）は `x-admin-token` 一致 **または** Access 通過の証跡 `Cf-Access-Jwt-Assertion` ヘッダの存在で通す（どちらも無ければ 401）。JWT の署名・aud 検証は未実施＝Access が前段にある前提の tripwire（強化は P5 で検討）。
 - local は `.dev.vars`（gitignore）でローカル秘密を与える。スタブ向き先もここで上書き。
 
@@ -165,7 +166,7 @@ APP_ENV=local
 LLM_PROVIDER=ollama           # 開発既定。本番/ST は gemini
 OLLAMA_BASE_URL=http://localhost:11434
 GEMINI_API_KEY=xxxx           # 品質確定・ST/prod 用
-TRANSIT_API_BASE=http://localhost:1080
+TRANSIT_API_BASE=http://localhost:1080   # 省略時は実 API（https://api.transit.ls8h.com）。スタブ利用時のみ指定
 SLACK_WEBHOOK_URL=http://localhost:1081/webhook
 ```
 
@@ -306,7 +307,7 @@ jobs:
 2. `prod` に **Required reviewers = 自分** を設定（承認ゲート）。
 3. 各 Environment の Secrets に `CLOUDFLARE_API_TOKEN`（Workers/D1/R2/KV/Pages 権限）と `CLOUDFLARE_ACCOUNT_ID` を登録。
 4. Cloudflare API Token は st 用・prod 用を分けて発行し、それぞれの Environment にのみ置く（越境デプロイを防ぐ）。
-5. アプリのシークレット（LLM/駅すぱあと/Slack）は Actions ではなく `wrangler secret put --env st|prod` で各環境に直接設定（初回のみ手動）。
+5. アプリのシークレット（LLM/Slack）は Actions ではなく `wrangler secret put --env st|prod` で各環境に直接設定（初回のみ手動）。
 
 ## 6. マイグレーションの流れ（環境横断）
 

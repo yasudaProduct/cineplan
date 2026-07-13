@@ -21,6 +21,7 @@ Claude Code は、ここに記録された決定（特に内部利用限定・�
 | 0011 | 抽出 LLM を Gemini Flash（無料枠）に変更（0004 を Supersede） | Accepted |
 | 0012 | 画像スケジュールをマルチモーダルLLMで抽出（0003 を拡張） | Accepted |
 | 0013 | Web を React Router v8（旧 Remix）+ Workers で実装（Next.js/Pages 想定を変更） | Accepted |
+| 0014 | 移動時間の解決に ls8h Transit API（無料・非公式）を採用（0005 の行列生成手段を確定） | Accepted |
 
 ## テンプレート（新規追加時にコピー）
 

@@ -96,6 +96,8 @@ pnpm -F @cinema/api exec wrangler d1 execute cinema_hashigo --local --persist-to
 #   事前に packages/ingest/.dev.vars を用意（LLM_PROVIDER 等。vision は Ollama ビジョンモデル or Gemini）
 curl -X POST "http://localhost:8787/admin/ingest?theaterId=thr_cnv01"
 # 管理サイト（P4-2〜5。ダッシュボード/劇場マスタ/取込履歴/レビュー）はブラウザで http://localhost:8787/admin
+# TravelMatrix 再生成（P4-6。ls8h Transit API・ADR-0014。ダッシュボードのボタン or ↓）
+curl -X POST http://localhost:8787/admin/travel-matrix/rebuild
 
 # ルート算出の手動確認（P2。api dev 起動中に。データは取込済みの日付で）
 curl -X POST http://localhost:8788/v1/plan -H 'content-type: application/json' \

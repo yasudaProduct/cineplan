@@ -3,6 +3,7 @@
 
 export * from './schemas/extraction'
 export * from './schemas/ingest'
+export * from './schemas/kv'
 export * from './schemas/movie'
 export * from './schemas/plan'
 export * from './schemas/screening'

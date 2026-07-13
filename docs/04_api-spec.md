@@ -298,3 +298,4 @@ components:
 4. **キャッシュ**: `GET /theaters` は `Cache-Control: max-age=3600`。`/movies` は `max-age=600`。`POST /plan` はキャッシュしない。
 5. **エラーコード体系**: `VALIDATION_ERROR` / `DATA_NOT_READY`（422）/ `RATE_LIMITED`（429）/ `INTERNAL`（500）。
 6. **CORS**: web は別オリジン（`api.<domain>` と web ドメイン / ローカルは :5173 と :8788）からブラウザ直接 fetch するため、`/v1/*` に CORS を許可する。MVP は認証なしの公開 API のため `Access-Control-Allow-Origin: *`（全許可）。認証・宛先制限を導入する際にオリジン許可リストへ切替える。
+7. **origin/destination の station 解決**（P4-6・ADR-0014）: ①対応劇場の `nearest_station` 一致（`walk_min_from_sta`）→ ②不一致なら `station-geo`（KV 30日）経由のジオコーディングで座標化し直線距離推定 → ③それでも不明なら 400 VALIDATION_ERROR。ジオコーディングの外部呼出はキャッシュ未ヒットの初出駅名のみ。

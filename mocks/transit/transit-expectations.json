@@ -1,14 +1,51 @@
 [
   {
-    "httpRequest": {},
+    "httpRequest": {
+      "method": "GET",
+      "path": "/api/v1/plan"
+    },
     "httpResponse": {
       "statusCode": 200,
-      "headers": {
-        "Content-Type": ["application/json"]
-      },
+      "headers": { "Content-Type": ["application/json"] },
       "body": {
-        "note": "transit-stub placeholder. 駅すぱあと互換の実期待値は P4-6 で定義する。",
-        "durationMin": 20
+        "date": "20260714",
+        "type": "departure",
+        "timezone": "Asia/Tokyo",
+        "journeys": [
+          {
+            "departureSecs": 47520,
+            "arrivalSecs": 48626,
+            "durationSecs": 1106,
+            "transferCount": 0,
+            "accessWalkSecs": 511,
+            "egressWalkSecs": 331,
+            "legs": [
+              { "kind": "transit", "routeName": "大阪環状線", "mode": "rail" },
+              { "kind": "walk" }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "httpRequest": {
+      "method": "GET",
+      "path": "/api/v1/locations/suggest"
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "headers": { "Content-Type": ["application/json"] },
+      "body": {
+        "stations": [
+          {
+            "id": "osakametro-rail:御堂筋線-梅田",
+            "name": "梅田",
+            "kind": "station",
+            "lat": 34.70313,
+            "lon": 135.497685
+          }
+        ]
       }
     }
   }

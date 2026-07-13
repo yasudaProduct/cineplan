@@ -1,13 +1,14 @@
-import type { PlanRequest, PlanResponse } from '@cinema/shared'
-import { normalizeStart } from '@cinema/shared'
+import type { PlanRequest, PlanResponse, TravelMatrix as TravelMatrixT } from '@cinema/shared'
+import { normalizeStart, TRAVEL_MATRIX_KV_KEY } from '@cinema/shared'
 import { isDataReady } from '../db/ready'
 import { loadCandidates } from '../db/screenings'
 import { listTheaterRows, toTheaterGeo } from '../db/theaters'
 import { ApiHttpError } from '../errors'
+import { resolveStationToGeo } from '../lib/station-geo'
 import { buildPlan } from './build'
 import { runDp } from './dp'
 import { selectPlans } from './kbest'
-import { createTravelResolver, resolveEndpointMinutes, type TravelMatrixData } from './travel'
+import { createTravelResolver, resolveEndpointMinutes } from './travel'
 import type { Candidate, PlanContext } from './types'
 
 // /plan エントリ（docs/12 §8）。infeasible 判定順は docs/05 §7 準拠。
@@ -18,6 +19,7 @@ export async function plan(
   db: D1Database,
   kv: KVNamespace,
   req: PlanRequest,
+  opts?: { transitApiBase?: string },
 ): Promise<PlanResponse> {
   // 1. データ未取込 → 422（docs/11 §5.4）
   if (!(await isDataReady(db, req.date))) {
@@ -37,20 +39,35 @@ export async function plan(
   const theaterRows = await listTheaterRows(db)
   const theaters = theaterRows.map(toTheaterGeo)
 
-  // origin/destination 解決（P2 暫定: station=最寄駅一致 / geo=フォールバック推定。本解決は P4-6）
-  const originToTheaterMin = resolveEndpointMinutes(req.origin, theaters)
+  // origin/destination 解決（docs/04 設計メモ7・docs/05 §5）:
+  // ①劇場最寄駅一致 → ②未知の駅名は station-geo（ls8h ジオコーディング・KV 30日）で座標化して
+  // 直線距離推定 → ③解決不能は 400。
+  const resolveEndpoint = async (loc: PlanRequest['origin']): Promise<Map<string, number>> => {
+    const direct = resolveEndpointMinutes(loc, theaters)
+    if (direct.size > 0) return direct
+    if (loc.type === 'station' && typeof loc.value === 'string') {
+      const geo = await resolveStationToGeo(kv, loc.value, opts?.transitApiBase)
+      if (geo) return resolveEndpointMinutes({ type: 'geo', value: geo }, theaters)
+    }
+    return direct
+  }
+  const originToTheaterMin = await resolveEndpoint(req.origin)
   if (originToTheaterMin.size === 0) {
     throw new ApiHttpError(
       400,
       'VALIDATION_ERROR',
-      'origin を解決できません（現在は対応劇場の最寄駅名または緯度経度を指定してください)',
+      'origin を解決できません（駅名が見つかりません。正確な駅名または緯度経度を指定してください）',
     )
   }
   let theaterToDestMin: Map<string, number> | null = null
   if (req.destination) {
-    theaterToDestMin = resolveEndpointMinutes(req.destination, theaters)
+    theaterToDestMin = await resolveEndpoint(req.destination)
     if (theaterToDestMin.size === 0) {
-      throw new ApiHttpError(400, 'VALIDATION_ERROR', 'destination を解決できません')
+      throw new ApiHttpError(
+        400,
+        'VALIDATION_ERROR',
+        'destination を解決できません（駅名が見つかりません。正確な駅名または緯度経度を指定してください）',
+      )
     }
   }
 
@@ -79,7 +96,7 @@ export async function plan(
     .filter((c) => c.startMin >= windowStartMin && c.endMin <= windowEndMin)
     .sort((a, b) => a.startMin - b.startMin || (a.screeningId < b.screeningId ? -1 : 1))
 
-  const matrix = await kv.get<TravelMatrixData>('travel-matrix:v1', 'json')
+  const matrix = await kv.get<TravelMatrixT>(TRAVEL_MATRIX_KV_KEY, 'json')
 
   return planFromCandidates(
     {

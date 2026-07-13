@@ -1,15 +1,27 @@
+import type { TravelMatrixMeta } from '../../cron/travel-matrix'
 import type { DashboardData } from '../../db/admin-queries'
-import { sparkline } from '../components'
+import { Flash, jst, sparkline } from '../components'
 
 // ダッシュボード（docs/07 §2.2）: 本日の取込状況・データ鮮度(N-02)・レビュー待ち・
-// LLM コスト(直近7日)・規約確認期限(F-24/90日) の5ウィジェット。
-export function DashboardPage({ d }: { d: DashboardData }) {
+// LLM コスト(直近7日)・規約確認期限(F-24/90日) + TravelMatrix（P4-6）。
+export function DashboardPage({
+  d,
+  matrix,
+  msg,
+  err,
+}: {
+  d: DashboardData
+  matrix: TravelMatrixMeta | null
+  msg?: string
+  err?: string
+}) {
   const freshPct =
     d.freshness.total === 0 ? null : Math.round((d.freshness.ready / d.freshness.total) * 100)
   const weekTokens = d.tokenDaily.reduce((a, r) => a + r.tokens, 0)
   return (
     <>
       <h1>ダッシュボード</h1>
+      <Flash msg={msg} err={err} />
       <div class="cards">
         <div class="card">
           <div class="k">本日の取込状況（active {d.activeTheaterCount} 劇場）</div>
@@ -48,6 +60,30 @@ export function DashboardPage({ d }: { d: DashboardData }) {
           <div class="small">
             {d.tokenDaily[0]?.day} 〜 {d.tokenDaily[d.tokenDaily.length - 1]?.day}（JST日次）
           </div>
+        </div>
+      </div>
+
+      <h2>移動時間行列（TravelMatrix。P4-6・ADR-0014）</h2>
+      <div class="cards">
+        <div class="card">
+          <div class="k">travel-matrix:v1（KV）</div>
+          <div class="v">
+            {matrix ? (
+              <>
+                {matrix.theaters} 劇場{' '}
+                <span class="small">
+                  生成 {jst(matrix.generatedAt)} / 欠損ペア {matrix.missing}
+                </span>
+              </>
+            ) : (
+              <span class="small">未生成（planner は直線距離推定で動作）</span>
+            )}
+          </div>
+          <form method="post" action="/admin/travel-matrix/rebuild" style="margin-top:8px">
+            <button type="submit" class="secondary">
+              再生成（劇場数×(劇場数-1) 件を1秒間隔で取得）
+            </button>
+          </form>
         </div>
       </div>
 

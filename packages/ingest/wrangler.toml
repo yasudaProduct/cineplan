@@ -103,4 +103,5 @@ max_concurrency = 1
 max_retries = 3
 
 [env.prod.triggers]
-crons = ["0 21 * * *"]
+# 毎日 21:00 UTC = 06:00 JST: 取込ディスパッチ / 月曜 18:00 UTC = 火曜 03:00 JST: TravelMatrix 週次（ADR-0014）
+crons = ["0 21 * * *", "0 18 * * 1"]

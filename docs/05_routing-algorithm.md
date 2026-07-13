@@ -100,6 +100,7 @@ travel(A, B) =
 ```
 
 - TravelMatrix 欠損ペア（新劇場追加直後など）は「直線距離 ÷ 20km/h + 15分」のフォールバック推定を使い、Plan の該当 TravelLeg に `summary: "推定値"` を付ける。
+- origin/destination の駅名が対応劇場の `nearest_station` に一致しない場合は、`station-geo`（03 §5.2。ls8h Transit API のジオコーディング・KV 30日キャッシュ）で座標化し、geo と同じフォールバック推定へ接続する（P4-6・ADR-0014）。座標化もできない駅名は 400 VALIDATION_ERROR。
 - 深夜時間帯（終電）は MVP では考慮しない。ただし end が 23:00 を超える Plan には UI 側で「終電にご注意」を表示する（API は `stats.endTime` を返すのみ）。
 
 ## 6. 代替案のラベリング

@@ -1,8 +1,13 @@
 import { Hono } from 'hono'
 import { adminApp } from './admin'
+import { buildTravelMatrix } from './cron/travel-matrix'
 import { listActiveTheaters } from './db/theaters'
 import type { Env } from './env'
+import { sendSlack } from './worker/notify'
 import { FETCH_FAILED_NOTIFY_AT_ATTEMPT, ingestTheater } from './worker/pipeline'
+
+// TravelMatrix 週次再生成の cron パターン（wrangler.toml [env.prod.triggers] と一致させる。docs/14 §3.2）
+const MATRIX_CRON = '0 18 * * 1'
 
 // fetch_failed の指数バックオフ（初回5分後・以降倍々。docs/06 §7）。
 const RETRY_BASE_DELAY_SECONDS = 300
@@ -30,8 +35,18 @@ app.get('/', (c) => c.text('cinema-ingest'))
 export default {
   fetch: app.fetch,
 
-  // Cron（prod のみ有効・docs/14）: active 劇場を Queue 投入（P1-6）。
-  async scheduled(_controller, env): Promise<void> {
+  // Cron（prod のみ有効・docs/14 §3.2）。controller.cron で分岐:
+  // - 毎日 21:00 UTC: active 劇場を Queue 投入（P1-6）
+  // - 月曜 18:00 UTC: TravelMatrix 週次再生成（P4-6・ADR-0014）
+  async scheduled(controller, env): Promise<void> {
+    if (controller.cron === MATRIX_CRON) {
+      const r = await buildTravelMatrix(env)
+      await sendSlack(
+        env.SLACK_WEBHOOK_URL,
+        `🚃 TravelMatrix 再生成: ${r.theaters}劇場 ${r.pairs}ペア（更新${r.updated}/温存${r.carried}/欠損${r.missing}${r.skippedWrite ? '・全滅のため未書込' : ''}）`,
+      )
+      return
+    }
     const theaters = await listActiveTheaters(env.DB)
     for (const t of theaters) {
       await env.INGEST_QUEUE.send({ theaterId: t.id })
