@@ -1,5 +1,6 @@
 import { TheaterStatus, TheaterUpsert } from '@cinema/shared'
 import { Hono } from 'hono'
+import { buildTravelMatrix, readTravelMatrixMeta } from '../cron/travel-matrix'
 import { jstDayStartIso, loadDashboard, todayJst } from '../db/admin-queries'
 import { countTodaySiteFetches, getRun, listRuns, recentRunsForTheater } from '../db/ingest-runs'
 import {
@@ -54,11 +55,20 @@ adminApp.post('/ingest', async (c) => {
 // ---- ダッシュボード（P4-2）----
 adminApp.get('/', async (c) => {
   const d = await loadDashboard(c.env.DB)
+  const matrix = await readTravelMatrixMeta(c.env.KV)
   return c.html(
     <Layout title="ダッシュボード" active="dashboard" env={env(c)}>
-      <DashboardPage d={d} />
+      <DashboardPage d={d} matrix={matrix} msg={c.req.query('msg')} err={c.req.query('err')} />
     </Layout>,
   )
+})
+
+// TravelMatrix 手動再生成（P4-6・ADR-0014）。外部は経路探索 API のみ（先方劇場サイトへは
+// アクセスしないため prod でも実行可）。劇場数 n の直列リクエスト n(n-1) 件・1秒間隔。
+adminApp.post('/travel-matrix/rebuild', async (c) => {
+  const r = await buildTravelMatrix(c.env)
+  const msg = `TravelMatrix 再生成: ${r.theaters}劇場 ${r.pairs}ペア（更新${r.updated}/温存${r.carried}/欠損${r.missing}${r.skippedWrite ? '・全滅のため未書込' : ''}）`
+  return c.redirect(`/admin?msg=${encodeURIComponent(msg)}`)
 })
 
 // ---- 劇場マスタ（P4-3）----

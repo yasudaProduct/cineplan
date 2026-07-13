@@ -126,9 +126,10 @@
   - Done ✓: 一覧（劇場/status フィルタ・50件ページング）・詳細（全項目+スナップショットリンク）。**R2 再抽出をブラウザ E2E**: trigger=`retry` の新 run が succeeded（136件・実 Gemini・**先方サイトへアクセスなし**）。coverageFloor はスナップショット取得日（today だと月跨ぎで新データを消すため。write.ts）。
 - [x] **P4-5 レビューキュー**（§2.5、承認は通常書込パスで反映）
   - Done ✓: 一覧（pending 既定/all）・詳細は抽出結果テーブルと **R2 画像のインライン突合表示**。承認 E2E: `approveReview` が pipeline と同一の `normalizeResolveWrite` で D1 反映（2件書込・元 run を succeeded 化・D1 で確認）。破棄はメモ必須（サーバ側検証を実機確認・migration 0004 で `review_note` 追加）。プロンプト再実行=同スナップショット再抽出。
-- [ ] **P4-6 TravelMatrix 事前計算バッチ**
-  - 駅すぱあと API で劇場間行列を週次生成 → KV。差分更新。P2-2 の固定値表を置換。
-  - Done: KV の travel-matrix を planner が参照する。
+- [x] **P4-6 TravelMatrix 事前計算バッチ**（実装ブランチ `feat/p4-6-travel-matrix`）
+  - 駅すぱあとは法人向けのため不採用 → **ls8h Transit API（無料・非公式）を採用**（ADR-0014。ToS はオーナーが 2026-07-13 実査）。KV 契約は shared の `TravelMatrix`/`StationGeo`（ハードルール7）。
+  - Done ✓: 週次 cron（prod 月曜 18:00 UTC）+ 管理ダッシュボードの手動再生成。実 API E2E で 2劇場2ペア生成（九条⇄梅田 27/23分・非対称・路線名 summary）→ planner が KV 参照。失敗ペアは前回値温存・全滅時は未書込・retired 除外・直列 1 秒間隔（ユニット12件）。
+  - 副次（P2-2 の「本解決は P4-6」）: **origin/destination の未知駅名を station-geo（ls8h ジオコーディング・KV 30日）で座標化** → 直線距離推定に接続。E2E で「梅田」発が 400→200（3案）・KV キャッシュ・不明駅 400 を確認。
 - [ ] **P4-7 rendered 劇場対応（Browser Rendering）**
   - JS 描画サイト（TOHO 等）を1つ追加。fetch_method=rendered。
   - Done: rendered 劇場が取込できる。

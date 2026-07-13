@@ -31,7 +31,8 @@ cinema-hashigo/                          # リポジトリルート
 │   │       │   ├── screening.ts         # Screening / CandidateScreening
 │   │       │   ├── plan.ts              # PlanRequest / Plan / Leg（ScreeningLeg / TravelLeg / WaitLeg）/ Score / PlanLabel
 │   │       │   ├── extraction.ts        # ExtractionResult / ExtractedScreening
-│   │       │   └── ingest.ts            # ExtractMethod / IngestRunStatus / TheaterRecord / NormalizedScreening 等
+│   │       │   ├── ingest.ts            # ExtractMethod / IngestRunStatus / TheaterRecord / NormalizedScreening 等
+│   │       │   └── kv.ts                # TravelMatrix / StationGeo（KV 値の契約。ingest が書き api が読む。03 §5）
 │   │       └── utils/
 │   │           ├── id.ts                # newId()（nanoid ベース、プレフィックス付き短ID）
 │   │           ├── time.ts              # normalizeStart() / toBusinessDate() / titleKey()
@@ -73,7 +74,7 @@ cinema-hashigo/                          # リポジトリルート
 │   │       ├── index.ts                 # Worker エントリ（Cron / Queue consumer / /admin fetch ハンドラ振分）
 │   │       ├── cron/
 │   │       │   ├── dispatch.ts          # 劇場リストを Queues に投入（劇場単位にジョブ分割）
-│   │       │   └── travel-matrix.ts     # 劇場間移動時間行列の週次計算 → KV 保存（駅すぱあと API）
+│   │       │   └── travel-matrix.ts     # 劇場間移動時間行列の週次計算 → KV 保存（ls8h Transit API。ADR-0014）
 │   │       ├── llm/                     # 抽出クライアント抽象化（provider×方式。ADR-0011/0012）
 │   │       │   ├── types.ts             # ExtractInput{ text? | images? } / LlmResult（tokens 含む）
 │   │       │   ├── gemini.ts            # Gemini generateContent（responseSchema・inline_data 画像）
@@ -141,7 +142,7 @@ cinema-hashigo/                          # リポジトリルート
 │
 ├── mocks/                               # Docker Compose スタブ設定（ローカル開発専用）
 │   ├── transit/
-│   │   └── transit-expectations.json   # 駅すぱあと API モックレスポンス定義
+│   │   └── transit-expectations.json   # 経路探索 API（ls8h・ADR-0014）モックレスポンス定義
 │   └── slack/
 │       └── slack-expectations.json     # Slack Webhook モックレスポンス定義
 │
@@ -164,7 +165,7 @@ cinema-hashigo/                          # リポジトリルート
 │   ├── 09_roadmap.md                    │
 │   ├── 10_adr/                          │
 │   │   ├── README.md                    │
-│   │   └── 0001-0013.md               ─┘
+│   │   └── 0001-0014.md               ─┘
 │   ├── 11_d1-implementation.md         ─┐ 実装詳細
 │   ├── 12_dp-implementation.md          │ （期待値テスト含む）
 │   ├── 13_claude-code-kickoff.md        │ Claude Code 起動プロンプト

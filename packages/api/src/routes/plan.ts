@@ -24,7 +24,9 @@ export const planRoute = new Hono<{ Bindings: Env }>().post('/', async (c) => {
     )
   }
   try {
-    return c.json(await plan(c.env.DB, c.env.KV, parsed.data))
+    return c.json(
+      await plan(c.env.DB, c.env.KV, parsed.data, { transitApiBase: c.env.TRANSIT_API_BASE }),
+    )
   } catch (e) {
     if (e instanceof ApiHttpError) {
       return c.json({ code: e.code, message: e.message }, e.status)

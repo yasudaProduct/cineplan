@@ -1,10 +1,11 @@
-import type { Location } from '@cinema/shared'
+import type { Location, TravelMatrix } from '@cinema/shared'
 import type { TravelResolver } from './types'
 
 // 移動時間の解決（docs/05 §5）。
-// 劇場間: KV の TravelMatrix があれば参照、欠損ペアは直線距離フォールバック推定。
-// origin/destination: P2 暫定 — station は劇場の nearest_station 一致（walk_min_from_sta）、
-// geo は直線距離フォールバック。駅すぱあとによる本解決は P4-6（ADR-0005）。
+// 劇場間: KV の TravelMatrix（shared 契約・ingest 週次バッチが生成。ADR-0014）があれば参照、
+// 欠損ペアは直線距離フォールバック推定。
+// origin/destination: station は劇場の nearest_station 一致（walk_min_from_sta）、
+// 不一致の駅名は station-geo で座標化して geo と同じ推定（P4-6）、geo は直線距離推定。
 
 export interface TheaterGeo {
   id: string
@@ -12,13 +13,6 @@ export interface TheaterGeo {
   lng: number
   nearestStation: string
   walkMinFromSta: number
-}
-
-// KV `travel-matrix:v{n}` の値（docs/03 §5.1）
-export interface TravelMatrixData {
-  theaters: string[]
-  matrix: number[][]
-  summaries?: Record<string, string>
 }
 
 const FALLBACK_SPEED_KMH = 20
@@ -43,7 +37,7 @@ export function estimateMinutes(aLat: number, aLng: number, bLat: number, bLng: 
 
 export function createTravelResolver(
   theaters: TheaterGeo[],
-  matrix: TravelMatrixData | null,
+  matrix: TravelMatrix | null,
 ): TravelResolver {
   const idx = new Map<string, number>((matrix?.theaters ?? []).map((id, i) => [id, i]))
   const geo = new Map(theaters.map((t) => [t.id, t]))

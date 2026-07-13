@@ -19,7 +19,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="flex-1">{children}</div>
         {/* 免責の全ページ掲示（docs/08 §5） */}
         <footer className="mt-8 border-t border-neutral-200 bg-white px-4 py-4 text-center text-xs text-neutral-500">
-          上映時間は変更される場合があります。必ず各劇場の公式サイトでご確認ください。
+          上映時間は変更される場合があります。必ず各劇場の公式サイトでご確認ください。移動時間・経路は目安です。
         </footer>
         <ScrollRestoration />
         <Scripts />

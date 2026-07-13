@@ -145,20 +145,20 @@ CREATE TABLE shared_plans (
   "generatedAt": "2026-07-06T21:00:00Z",
   "unit": "minutes",
   "theaters": ["thr_a", "thr_b", ...],
-  // matrix[i][j] = theaters[i] から theaters[j] への所要分（駅→駅 + 両端徒歩）
+  // matrix[i][j] = theaters[i] から theaters[j] への所要分（劇場前→劇場前 door-to-door。欠損は null）
   "matrix": [[0, 24, ...], [26, 0, ...], ...],
   // 経路概要（UI 表示用、任意）
   "summaries": { "thr_a>thr_b": "梅田→なんば（御堂筋線）" }
 }
 ```
 
-- 生成: 週次バッチ（ingest パッケージの Cron）。駅すぱあと API で `nearest_station` 間を検索し、`walk_min_from_sta` を両端に加算。
+- 生成: 週次バッチ（ingest の prod Cron 月曜 18:00 UTC = 火曜 03:00 JST）+ 管理サイトからの手動再生成（P4-6）。ls8h Transit API（ADR-0014）の `/api/v1/plan` を劇場座標の geo→geo で引き、所要分 = `ceil((accessWalkSecs + durationSecs) / 60)`（egress 徒歩は durationSecs に含まれる）。代表時刻は**翌日 13:00**（昼間ダイヤ・実行時刻に依存しない）。`summaries` は乗車 leg の routeName を「→」連結（例「長堀鶴見緑地線→御堂筋線」）。
 - 非対称（i→j ≠ j→i）を許容する。
-- 30館で 870 要素。フリープラン枠を考慮し、差分更新（新規劇場追加時はその行・列のみ計算）を基本とする。
+- 30館で 870 要素。小規模のうちは週次フル再生成とし、**失敗ペアは前回値を温存・全滅時は KV を上書きしない**（無料 API の不調への安全弁。ADR-0014）。リクエストは直列・1秒以上間隔。差分更新はスケール時の課題として先送り。
 
 ### 5.2 station-geo
 
-- キー: `station-geo:{駅名}` → `{ lat, lng }`。origin の geo→最寄駅解決の補助キャッシュ。TTL 30日。
+- キー: `station-geo:{駅名}` → `{ lat, lng }`。origin/destination の**駅名→座標**ジオコーディングキャッシュ（ls8h `/api/v1/locations/suggest`。ADR-0014）。対応劇場の `nearest_station` に一致しない駅名はこれで座標化し、直線距離推定（05 §5）へ接続する。TTL 30日。
 
 ## 6. 名寄せ規則（movies）
 

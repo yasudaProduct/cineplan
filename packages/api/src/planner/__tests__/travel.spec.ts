@@ -30,6 +30,8 @@ describe('createTravelResolver', () => {
 
   it('TravelMatrix があれば行列値を返す（非対称も可）', () => {
     const tr = createTravelResolver([A, B], {
+      generatedAt: '2026-07-13T00:00:00Z',
+      unit: 'minutes',
       theaters: ['thr_a', 'thr_b'],
       matrix: [
         [0, 24],
@@ -52,6 +54,8 @@ describe('createTravelResolver', () => {
   it('行列にセル欠損・null が混じっても 0/undefined 扱いせずフォールバックする', () => {
     const fallback = Math.ceil((haversineKm(A.lat, A.lng, B.lat, B.lng) / 20) * 60) + 15
     const tr = createTravelResolver([A, B], {
+      generatedAt: '2026-07-13T00:00:00Z',
+      unit: 'minutes',
       theaters: ['thr_a', 'thr_b'],
       // 1行目はセル欠損（[0] のみ）。null も数値として扱わない
       matrix: [[0], [null as unknown as number, 0]],
