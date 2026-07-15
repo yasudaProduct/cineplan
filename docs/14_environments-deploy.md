@@ -12,7 +12,7 @@
 | **st** | クラウド上の動作確認（ステージング） | Cloudflare（本番と別アカウント資源） | D1 `cinema_hashigo_st` | `main` ブランチ push（自動） |
 | **prod** | 本番 | Cloudflare | D1 `cinema_hashigo_prod` | Git タグ `v*` or 手動承認（後述） |
 
-- **local と st の役割分担**: local はエミュレーション中心で高速に回す。st は「実際の Cloudflare 上で Workers/D1/R2/KV/Queues/Browser Rendering が想定通り動くか」を確認する場所。エミュレーションでは再現しない挙動（Queues のリトライ、Browser Rendering、Access、Cron）は st で確認する。
+- **local と st の役割分担**: local はエミュレーション中心で高速に回す。st は「実際の Cloudflare 上で Workers/D1/R2/KV/Queues/Browser Rendering が想定通り動くか」を確認する場所。エミュレーションでは再現しない挙動（Queues のリトライ、Access、Cron）は st で確認する。Browser Rendering は `wrangler dev` がローカル Chromium を起動するため local でも実機同等に検証できる（P4-7 時点の wrangler）。
 - **prod と st は資源を完全分離**する。D1・R2・KV・Queues すべて別インスタンス。シークレットも別。
 
 ## 2. ローカル開発 — Docker Compose の役割
@@ -335,7 +335,7 @@ prod:   （v* タグ + 承認で Actions が）apply ... cinema_hashigo_prod --e
 | DB | D1 local (SQLite) | D1 st | D1 prod |
 | 外部API/通知 | Compose スタブ | 実サービス（低頻度） | 実サービス |
 | Cron（取込定期実行） | エミュレート | 原則OFF（検証時のみON） | ON |
-| Browser Rendering | 制限あり/スキップ可 | 有効 | 有効 |
+| Browser Rendering | ローカル Chromium 起動（実機同等） | 有効 | 有効 |
 | Access（管理サイト） | 省略可 | 有効 | 有効 |
 | シークレット源 | `.dev.vars` | wrangler secret (st) | wrangler secret (prod) |
 | デプロイ | 手元実行 | main push（自動） | v* タグ＋承認 |

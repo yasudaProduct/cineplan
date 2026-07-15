@@ -3,12 +3,12 @@ import { createReview, recentAvgCount } from '../db/reviews'
 import { getTheater } from '../db/theaters'
 import type { Env } from '../env'
 import { TheaterNotFoundError } from './errors'
-import { extractVisionWithRetries } from './extract'
+import { extractTextWithRetries, extractVisionWithRetries } from './extract'
 import type { FetchedImage } from './fetch'
 import { normalize } from './normalize'
 import { sendSlack } from './notify'
 import type { IngestResult } from './pipeline'
-import { imagesToParts } from './preprocess'
+import { htmlToText, imagesToParts } from './preprocess'
 import { validateExtracted, validateNormalized } from './validate'
 import { normalizeResolveWrite } from './write'
 
@@ -51,29 +51,43 @@ export async function reextractFromSnapshot(env: Env, sourceRunId: string): Prom
   const theater = await getTheater(env.DB, source.theater_id)
   if (!theater) throw new TheaterNotFoundError(source.theater_id)
 
-  // 保存済み画像を列挙（{prefix}_{n}.{ext}。.html は抽出入力ではない）
-  const listed = await env.SNAPSHOTS.list({ prefix: `${source.snapshot_key}_` })
-  const imageKeys = listed.objects
-    .map((o) => o.key)
-    .filter((k) => MIME[extOf(k)])
-    .sort()
-  if (imageKeys.length === 0) {
-    throw new SnapshotNotFoundError(
-      `画像スナップショットがありません（${source.snapshot_key}_*。text 取込の run は再抽出未対応）`,
-    )
+  // 抽出入力をスナップショットから復元する。
+  // vision: 保存済み画像（{prefix}_{n}.{ext}）/ text: 保存済み HTML（{prefix}.html。P4-7）
+  let extractInput:
+    | { kind: 'vision'; images: ReturnType<typeof imagesToParts> }
+    | { kind: 'text'; text: string }
+  if (theater.extractMethod === 'vision') {
+    const listed = await env.SNAPSHOTS.list({ prefix: `${source.snapshot_key}_` })
+    const imageKeys = listed.objects
+      .map((o) => o.key)
+      .filter((k) => MIME[extOf(k)])
+      .sort()
+    if (imageKeys.length === 0) {
+      throw new SnapshotNotFoundError(
+        `画像スナップショットがありません（${source.snapshot_key}_*）`,
+      )
+    }
+    const fetchedImages: FetchedImage[] = []
+    for (const key of imageKeys) {
+      const obj = await env.SNAPSHOTS.get(key)
+      if (!obj) continue
+      fetchedImages.push({
+        url: `r2://${key}`,
+        mimeType: MIME[extOf(key)] ?? 'image/gif',
+        bytes: await obj.arrayBuffer(),
+        lastModified: null,
+      })
+    }
+    extractInput = { kind: 'vision', images: imagesToParts(fetchedImages) }
+  } else {
+    const obj = await env.SNAPSHOTS.get(`${source.snapshot_key}.html`)
+    if (!obj) {
+      throw new SnapshotNotFoundError(
+        `HTML スナップショットがありません（${source.snapshot_key}.html）`,
+      )
+    }
+    extractInput = { kind: 'text', text: htmlToText(await obj.text()) }
   }
-  const fetchedImages: FetchedImage[] = []
-  for (const key of imageKeys) {
-    const obj = await env.SNAPSHOTS.get(key)
-    if (!obj) continue
-    fetchedImages.push({
-      url: `r2://${key}`,
-      mimeType: MIME[extOf(key)] ?? 'image/gif',
-      bytes: await obj.arrayBuffer(),
-      lastModified: null,
-    })
-  }
-  const images = imagesToParts(fetchedImages)
 
   // 新しい run として記録（business_date は実行日ではなくスナップショットの取得日:
   // 「そのデータがどの日の取得か」を保つ。docs/11 §5.4 の ready 判定とも整合）
@@ -87,7 +101,15 @@ export async function reextractFromSnapshot(env: Env, sourceRunId: string): Prom
   // 抽出（リトライ込み・docs/06 §7）→ 検証 → 通常書込パス（pipeline と同一）
   let outcome: Awaited<ReturnType<typeof extractVisionWithRetries>>
   try {
-    outcome = await extractVisionWithRetries(env, images, snapshotDate.slice(0, 7))
+    outcome =
+      extractInput.kind === 'vision'
+        ? await extractVisionWithRetries(env, extractInput.images, snapshotDate.slice(0, 7))
+        : await extractTextWithRetries(
+            env,
+            extractInput.text,
+            snapshotDate.slice(0, 7),
+            theater.scheduleUrl,
+          )
   } catch (e) {
     const msg = (e as Error).message
     await failRun(env.DB, runId, {

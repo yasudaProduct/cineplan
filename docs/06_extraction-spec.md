@@ -33,6 +33,11 @@ Fetch (static fetch / Browser Rendering)
 4. テキスト化: HTML タグを保ったまま（表構造の手掛かりになるため Markdown 変換はしない。タグ簡約のみ）。
 5. 上映スケジュールらしき領域の切り出しは**行わない**（ヒューリスティックがサイト依存になるため）。将来コスト最適化が必要になったら「前日スナップショットとの diff が閾値未満なら抽出スキップ」を先に導入する（画像は Last-Modified / バイト一致で判定）。
 
+### 2.0 rendered（JS 描画サイト）の取得（P4-7）
+- `fetch_method=rendered` の劇場は Cloudflare Browser Rendering（`BROWSER` バインディング + @cloudflare/puppeteer）で描画後の DOM を取得する。1回の取込 = 1回のページロード（取得マナーは static と同じ: 正直 UA・30s タイムアウト。docs/08 §3）。
+- 描画後 HTML を R2 に保存し（`{prefix}.html`）、以降の再抽出はこのスナップショットから行う（先方再取得なし）。画像のダウンロードは行わない（rendered は text 抽出前提）。
+- ローカル開発でも `wrangler dev` がローカル Chromium を起動するため実機同等に検証できる（docs/14 §8）。
+
 ### 2.1 vision（画像）の前処理
 - schedule ページ HTML を取得し `image/schedule/*.gif` 等の画像 URL を抽出 → 各画像を取得 → R2 保存。
 - 画像バイトを base64 化して LLM に渡す（Gemini=`inline_data`、Ollama=`images[]`）。過大な画像のみ縮小（初期は素通し。cinenouveau は 1枚 ≒ 23KB GIF）。
@@ -82,8 +87,11 @@ export const ExtractionResult = z.object({
 </role>
 
 <instructions>
-- 与えられた HTML から、{businessDate} の上映情報をすべて抽出し、
+- 与えられた HTML から、ページに掲載されている全日付の上映情報をすべて抽出し、
   指定の JSON スキーマのみで出力してください。説明文は出力しないでください。
+- 各上映の date(YYYY-MM-DD) はページの表記から補完してください（基準月 {businessMonth}）。
+  ページが単一日のみで日付が読み取れない場合は date を null にしてください
+  （正規化時に businessDate へフォールバックする。vision_v1 と同じ意味論）。
 - 上映時刻はページの表記のまま抽出してください（"25:10" のような表記もそのまま）。
 - 終了時刻の記載がなければ endTime は null にしてください。推測しないでください。
 - ページに存在しない情報を補完・創作しないでください。

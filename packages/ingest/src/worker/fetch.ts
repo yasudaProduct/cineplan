@@ -74,3 +74,27 @@ export async function fetchSchedule(theater: FetchTarget): Promise<FetchedSchedu
   }
   return { scheduleHtml, images, fetchedAt }
 }
+
+// rendered 取得（P4-7・docs/06 §2.0）。Browser Rendering で JS 描画後の DOM を取得する。
+// 1回の取込 = 1回のページロード（取得マナーは static と同じ）。画像は取得しない（text 抽出前提）。
+// puppeteer は動的 import（vitest の Node 環境で workers 専用依存を読み込まないため）。
+export async function fetchRenderedSchedule(
+  browser: import('@cloudflare/puppeteer').BrowserWorker,
+  scheduleUrl: string,
+): Promise<FetchedSchedule> {
+  const fetchedAt = new Date().toISOString()
+  const puppeteer = (await import('@cloudflare/puppeteer')).default
+  const instance = await puppeteer.launch(browser)
+  try {
+    const page = await instance.newPage()
+    await page.setUserAgent(USER_AGENT) // 正直 UA（docs/08 §3）
+    const res = await page.goto(scheduleUrl, { waitUntil: 'networkidle0', timeout: TIMEOUT_MS })
+    if (res && !res.ok() && res.status() !== 304) {
+      throw new Error(`HTTP ${res.status()} for ${scheduleUrl}`)
+    }
+    const scheduleHtml = await page.content() // 描画後 DOM
+    return { scheduleHtml, images: [], fetchedAt }
+  } finally {
+    await instance.close()
+  }
+}
