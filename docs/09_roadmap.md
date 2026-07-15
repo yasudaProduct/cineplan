@@ -130,9 +130,10 @@
   - 駅すぱあとは法人向けのため不採用 → **ls8h Transit API（無料・非公式）を採用**（ADR-0014。ToS はオーナーが 2026-07-13 実査）。KV 契約は shared の `TravelMatrix`/`StationGeo`（ハードルール7）。
   - Done ✓: 週次 cron（prod 月曜 18:00 UTC）+ 管理ダッシュボードの手動再生成。実 API E2E で 2劇場2ペア生成（九条⇄梅田 27/23分・非対称・路線名 summary）→ planner が KV 参照。失敗ペアは前回値温存・全滅時は未書込・retired 除外・直列 1 秒間隔（ユニット12件）。
   - 副次（P2-2 の「本解決は P4-6」）: **origin/destination の未知駅名を station-geo（ls8h ジオコーディング・KV 30日）で座標化** → 直線距離推定に接続。E2E で「梅田」発が 400→200（3案）・KV キャッシュ・不明駅 400 を確認。
-- [ ] **P4-7 rendered 劇場対応（Browser Rendering）**
-  - JS 描画サイト（TOHO 等）を1つ追加。fetch_method=rendered。
-  - Done: rendered 劇場が取込できる。
+- [x] **P4-7 rendered 劇場対応（Browser Rendering）+ text 抽出経路**（実装ブランチ `feat/p4-7-rendered`）
+  - Done ✓（機構実証）: `fetch_method=rendered` を Browser Rendering（`BROWSER` binding + @cloudflare/puppeteer・正直UA・30s）で実装し、**ローカル実 Chromium で E2E**（自前の JS 描画テストページ → 描画後 DOM を R2 保存 → `htmlToText` → `text_v1` 抽出 → zod → D1。site/estimated 終了時刻・screenName・detailPath(href) まで正確）。text run の R2 再抽出（.html から）も E2E 済み。P1 から未対応だった `extract_method=text` 経路がこれで開通（リトライ予算は vision と共有実装）。
+  - 副次修正: wrangler 4.108 の「ローカル BR 使用後の外部 fetch ハング」を 4.110 更新で解消。gemini/ollama クライアントにタイムアウト追加（ハングをリトライ可能エラー化）。Ollama に構造化出力（format=JSONスキーマ）。Gemini 503 時に extraction_failed が正しく即時記録されることを実機で確認（docs/06 §7 の実証）。
+  - **実 rendered 劇場の追加は P4-8 の採用プロセス経由**（robots/規約の人間確認 → paused 起票 → 手動取込 → 3日連続 → active）。
 - [ ] **P4-8 劇場を5館まで拡充**
   - 各館とも採用プロセス（§2 of 08）を経て、3日連続成功で active。
 

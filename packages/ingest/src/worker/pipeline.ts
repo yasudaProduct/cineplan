@@ -5,11 +5,11 @@ import { getTheater } from '../db/theaters'
 import type { Env } from '../env'
 import { assertComplianceGate } from './compliance-guard'
 import { TheaterNotFoundError } from './errors'
-import { extractVisionWithRetries } from './extract'
-import { fetchSchedule } from './fetch'
+import { extractTextWithRetries, extractVisionWithRetries } from './extract'
+import { fetchRenderedSchedule, fetchSchedule } from './fetch'
 import { normalize } from './normalize'
 import { sendSlack } from './notify'
-import { imagesToParts } from './preprocess'
+import { htmlToText, imagesToParts } from './preprocess'
 import { type ValidationNg, validateExtracted, validateNormalized } from './validate'
 import { normalizeResolveWrite } from './write'
 
@@ -46,14 +46,18 @@ export async function ingestTheater(
   const businessMonth = businessDate.slice(0, 7)
   const runId = await createIngestRun(env.DB, { theaterId, businessDate, trigger })
 
-  // 1. Fetch。失敗時は Queue の再配信に委ねる（Worker 側で意図的な再取得はしない）。
+  // 1. Fetch（static=HTTP / rendered=Browser Rendering。docs/06 §2.0）。
+  //    失敗時は Queue の再配信に委ねる（Worker 側で意図的な再取得はしない）。
   //    Slack 通知は最終試行（attempt>=3）でのみ行う（毎回通知しない。docs/06 §7）。
   let fetched: Awaited<ReturnType<typeof fetchSchedule>>
   try {
-    fetched = await fetchSchedule({
-      scheduleUrl: theater.scheduleUrl,
-      extractMethod: theater.extractMethod,
-    })
+    fetched =
+      theater.fetchMethod === 'rendered'
+        ? await fetchRenderedSchedule(env.BROWSER, theater.scheduleUrl)
+        : await fetchSchedule({
+            scheduleUrl: theater.scheduleUrl,
+            extractMethod: theater.extractMethod,
+          })
   } catch (e) {
     return await fail(
       env,
@@ -80,23 +84,32 @@ export async function ingestTheater(
   }
   await updateRunStatus(env.DB, runId, 'extracting')
 
-  if (theater.extractMethod !== 'vision') {
+  if (theater.extractMethod === 'vision' && fetched.images.length === 0) {
     return await fail(
       env,
       runId,
       theaterId,
       theater.name,
       'extraction_failed',
-      `extract_method=${theater.extractMethod} は P1 未対応（vision のみ）`,
+      'vision 抽出対象のスケジュール画像が見つかりません',
       prefix,
     )
   }
 
-  // 3〜4. 抽出（vision）+ zod 検証。LLM APIエラー/パース不能/zod NG は関数内でリトライ済み
-  // （docs/06 §7 のリトライ予算。fetch 済み画像の使い回しのみで再取得はしない）。
+  // 3〜4. 抽出（vision=画像 / text=htmlToText 済みテキスト。P4-7）+ zod 検証。
+  // LLM APIエラー/パース不能/zod NG は関数内でリトライ済み（docs/06 §7 のリトライ予算。
+  // fetch 済み入力の使い回しのみで再取得はしない）。
   let outcome: Awaited<ReturnType<typeof extractVisionWithRetries>>
   try {
-    outcome = await extractVisionWithRetries(env, imagesToParts(fetched.images), businessMonth)
+    outcome =
+      theater.extractMethod === 'vision'
+        ? await extractVisionWithRetries(env, imagesToParts(fetched.images), businessMonth)
+        : await extractTextWithRetries(
+            env,
+            htmlToText(fetched.scheduleHtml),
+            businessMonth,
+            theater.scheduleUrl,
+          )
   } catch (e) {
     return await fail(
       env,

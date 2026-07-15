@@ -1,7 +1,35 @@
 import type { ExtractInput, LlmClient, LlmResult } from './types'
 
-// 開発専用（ADR-0011）。/api/chat・format=json。vision は message.images に base64 を渡す。
+// 開発専用（ADR-0011）。/api/chat・format=JSONスキーマ（構造化出力）。vision は message.images に base64。
 // 品質確定は本番プロバイダ（Gemini）で行うこと（「Ollama で通った ≠ Gemini で通る」）。
+
+// ExtractionResult 対応の JSON Schema（docs/06 §3）。Gemini の responseSchema と同等の担保を
+// Ollama にも与える（format='json' だけでは businessDate 欠落等のスキーマ逸脱が起きる）。
+// regex（date/startTime 等）は zod 側（validate）で検証する。
+const FORMAT_SCHEMA = {
+  type: 'object',
+  properties: {
+    businessDate: { type: 'string' },
+    notes: { type: ['string', 'null'] },
+    screenings: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          date: { type: ['string', 'null'] },
+          movieTitle: { type: 'string' },
+          startTime: { type: 'string' },
+          endTime: { type: ['string', 'null'] },
+          format: { type: ['string', 'null'] },
+          screenName: { type: ['string', 'null'] },
+          detailPath: { type: ['string', 'null'] },
+        },
+        required: ['movieTitle', 'startTime'],
+      },
+    },
+  },
+  required: ['businessDate', 'screenings'],
+}
 
 interface OllamaChatResponse {
   message?: { content?: string }
@@ -24,7 +52,7 @@ export function createOllamaClient(opts: { baseUrl: string; model: string }): Ll
       const body = {
         model: opts.model,
         messages: [{ role: 'system', content: input.systemPrompt }, userMsg],
-        format: 'json',
+        format: FORMAT_SCHEMA,
         stream: false,
         options: { temperature: 0 },
       }
@@ -32,6 +60,7 @@ export function createOllamaClient(opts: { baseUrl: string; model: string }): Ll
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(300_000), // ローカルモデルは遅いため長め
       })
       if (!res.ok) {
         throw new Error(`ollama ${res.status}: ${(await res.text()).slice(0, 500)}`)

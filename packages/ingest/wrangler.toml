@@ -1,6 +1,13 @@
 name = "cinema-ingest"
 main = "src/index.ts"
 compatibility_date = "2026-07-01"
+# @cloudflare/puppeteer（Browser Rendering・P4-7）が必要とする Node 互換
+compatibility_flags = ["nodejs_compat"]
+
+# rendered 劇場の描画取得（fetch_method=rendered。P4-7・docs/06 §2.0）。
+# local でも wrangler dev がローカル Chromium を起動する（docs/14 §8）。
+[browser]
+binding = "BROWSER"
 
 # --- 既定（local）---
 [[d1_databases]]
@@ -56,6 +63,9 @@ id = "d4f5b647d399400889f757e0dc67bfbc"
 binding = "SNAPSHOTS"
 bucket_name = "cinema-snapshots-st"
 
+[env.st.browser]
+binding = "BROWSER"
+
 [[env.st.queues.producers]]
 binding = "INGEST_QUEUE"
 queue = "cinema-ingest-queue-st"
@@ -89,6 +99,9 @@ id = "REPLACE_WITH_PROD_KV_ID"
 [[env.prod.r2_buckets]]
 binding = "SNAPSHOTS"
 bucket_name = "cinema-snapshots-prod"
+
+[env.prod.browser]
+binding = "BROWSER"
 
 [[env.prod.queues.producers]]
 binding = "INGEST_QUEUE"

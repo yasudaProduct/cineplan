@@ -1,3 +1,4 @@
+import type { BrowserWorker } from '@cloudflare/puppeteer'
 import type { LlmEnv } from './llm'
 
 // ingest Worker の env。bindings（wrangler.toml）+ vars/secret。
@@ -7,6 +8,8 @@ export interface Env extends LlmEnv {
   KV: KVNamespace
   SNAPSHOTS: R2Bucket
   INGEST_QUEUE: Queue
+  // Browser Rendering（fetch_method=rendered の描画取得。P4-7）
+  BROWSER: BrowserWorker
   APP_ENV: string
   SLACK_WEBHOOK_URL?: string
   // 経路探索 API（ls8h Transit API。ADR-0014）。省略時は実 API。スタブ検証時のみ上書き。

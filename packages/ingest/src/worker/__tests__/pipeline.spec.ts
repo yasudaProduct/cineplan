@@ -26,7 +26,10 @@ const getTheaterMock = vi.fn(async () => compliantTheater)
 const createIngestRunMock = vi.fn(async () => 'run_1')
 const failRunMock = vi.fn(async () => {})
 const fetchScheduleMock = vi.fn()
+const fetchRenderedMock = vi.fn()
 const sendSlackMock = vi.fn(async () => {})
+const extractVisionMock = vi.fn()
+const extractTextMock = vi.fn()
 
 vi.mock('../../db/theaters', () => ({ getTheater: getTheaterMock, listActiveTheaters: vi.fn() }))
 vi.mock('../../db/ingest-runs', () => ({
@@ -35,8 +38,21 @@ vi.mock('../../db/ingest-runs', () => ({
   completeRun: vi.fn(async () => {}),
   failRun: failRunMock,
 }))
-vi.mock('../fetch', () => ({ fetchSchedule: fetchScheduleMock }))
+vi.mock('../fetch', () => ({
+  fetchSchedule: fetchScheduleMock,
+  fetchRenderedSchedule: fetchRenderedMock,
+}))
 vi.mock('../notify', () => ({ sendSlack: sendSlackMock }))
+vi.mock('../extract', () => ({
+  extractVisionWithRetries: extractVisionMock,
+  extractTextWithRetries: extractTextMock,
+}))
+vi.mock('../../db/movies', () => ({ resolveMovieId: vi.fn(async () => 'mov_1') }))
+vi.mock('../../db/screenings', () => ({ replaceScreeningsByDate: vi.fn(async () => 1) }))
+vi.mock('../../db/reviews', () => ({
+  createReview: vi.fn(async () => 'rev_1'),
+  recentAvgCount: vi.fn(async () => undefined),
+}))
 
 const { ingestTheater } = await import('../pipeline')
 
@@ -82,5 +98,84 @@ describe('ingestTheater — fetch_failed の通知タイミング（review指摘
       'run_1',
       expect.objectContaining({ status: 'fetch_failed', errorMessage: 'network error' }),
     )
+  })
+})
+
+// P4-7: fetch_method / extract_method の分岐
+describe('ingestTheater — rendered + text 分岐（P4-7）', () => {
+  const okOutcome = {
+    ext: {
+      parsed: {},
+      raw: '{}',
+      model: 'stub:m',
+      promptVersion: 'text_v1',
+      inTokens: 1,
+      outTokens: 1,
+    },
+    result: {
+      businessDate: '2026-07-13',
+      screenings: [
+        {
+          date: '2026-07-14',
+          movieTitle: 'A',
+          startTime: '10:00',
+          endTime: null,
+          screenName: null,
+          format: null,
+          detailPath: null,
+        },
+      ],
+      notes: null,
+    },
+  }
+
+  it('fetchMethod=rendered は Browser Rendering 経由で取得し、text 抽出で succeeded になる', async () => {
+    getTheaterMock.mockResolvedValue({
+      ...compliantTheater,
+      fetchMethod: 'rendered',
+      extractMethod: 'text',
+    })
+    fetchRenderedMock.mockResolvedValue({
+      scheduleHtml: '<div id="app"><table>…</table></div>',
+      images: [],
+      fetchedAt: '2026-07-13T00:00:00.000Z',
+    })
+    extractTextMock.mockResolvedValue(okOutcome)
+    const r = await ingestTheater({ SNAPSHOTS: { put: vi.fn() } } as never, 'thr_test', 'manual')
+    expect(r.status).toBe('succeeded')
+    expect(fetchRenderedMock).toHaveBeenCalledTimes(1)
+    expect(fetchScheduleMock).not.toHaveBeenCalled()
+    expect(extractTextMock).toHaveBeenCalledTimes(1)
+    expect(extractVisionMock).not.toHaveBeenCalled()
+    // htmlToText 済みテキスト（タグ簡約）と scheduleUrl が渡る
+    const args = extractTextMock.mock.calls[0] as unknown[]
+    expect(String(args[1])).toContain('<table>')
+    expect(args[3]).toBe('http://example.com/schedule')
+  })
+
+  it('static+vision は従来どおり fetchSchedule + vision 抽出（回帰）', async () => {
+    getTheaterMock.mockResolvedValue(compliantTheater)
+    fetchScheduleMock.mockResolvedValue({
+      scheduleHtml: '<html/>',
+      images: [{ url: 'u', mimeType: 'image/gif', bytes: new ArrayBuffer(4), lastModified: null }],
+      fetchedAt: '2026-07-13T00:00:00.000Z',
+    })
+    extractVisionMock.mockResolvedValue(okOutcome)
+    const r = await ingestTheater({ SNAPSHOTS: { put: vi.fn() } } as never, 'thr_test', 'manual')
+    expect(r.status).toBe('succeeded')
+    expect(extractVisionMock).toHaveBeenCalledTimes(1)
+    expect(extractTextMock).not.toHaveBeenCalled()
+  })
+
+  it('vision なのに画像 0 件は extraction_failed', async () => {
+    getTheaterMock.mockResolvedValue(compliantTheater)
+    fetchScheduleMock.mockResolvedValue({
+      scheduleHtml: '<html/>',
+      images: [],
+      fetchedAt: '2026-07-13T00:00:00.000Z',
+    })
+    const r = await ingestTheater({ SNAPSHOTS: { put: vi.fn() } } as never, 'thr_test', 'manual')
+    expect(r.status).toBe('extraction_failed')
+    expect(r.error).toContain('スケジュール画像')
   })
 })

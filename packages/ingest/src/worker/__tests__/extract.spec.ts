@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { extractVisionWithRetries } from '../extract'
+import { extractTextWithRetries, extractVisionWithRetries } from '../extract'
 
 // review指摘#2の回帰テスト: LLM APIエラーは最大2回・JSONパース不能/zod NGは
 // 合算で最大1回、fetch 済み画像を使い回してリトライする（再取得はしない）。docs/06 §7。
@@ -91,6 +91,33 @@ describe('extractVisionWithRetries', () => {
       .mockResolvedValueOnce({ raw: 'not json', model: 'stub:model', inTokens: 1, outTokens: 1 }) // 予算消費
       .mockResolvedValueOnce(okResponse({ businessDate: 'invalid-date', screenings: [] })) // 予算切れ
     await expect(extractVisionWithRetries({}, [], '2026-07')).rejects.toThrow()
+    expect(extractMock).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('extractTextWithRetries（P4-7。リトライ予算は vision と共有実装）', () => {
+  it('成功時: text_v1 の prompt_version と <page> ラッパで LLM を呼ぶ', async () => {
+    extractMock.mockResolvedValueOnce(okResponse(VALID))
+    const { ext, result } = await extractTextWithRetries(
+      {},
+      '<table><tr><td>ニッポン狂想曲 10:00</td></tr></table>',
+      '2026-07',
+      'http://example.com/schedule',
+    )
+    expect(result.businessDate).toBe('2026-07-10')
+    expect(ext.promptVersion).toBe('text_v1')
+    const input = extractMock.mock.calls[0]?.[0] as { systemPrompt: string; userText?: string }
+    expect(input.systemPrompt).toContain('2026-07')
+    expect(input.userText).toContain('<page url="http://example.com/schedule"')
+    expect(input.userText).toContain('ニッポン狂想曲')
+  })
+
+  it('LLM APIエラーのリトライ予算（最大2回）を vision と同様に消化する', async () => {
+    extractMock
+      .mockRejectedValueOnce(new Error('gemini 500'))
+      .mockResolvedValueOnce(okResponse(VALID))
+    const { result } = await extractTextWithRetries({}, 'x', '2026-07', 'http://e.com/')
+    expect(result.businessDate).toBe('2026-07-10')
     expect(extractMock).toHaveBeenCalledTimes(2)
   })
 })
