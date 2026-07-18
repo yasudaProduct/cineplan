@@ -8,8 +8,8 @@
     "build": "react-router build",
     "typecheck": "wrangler types && react-router typegen && tsc -b",
     "cf-typegen": "wrangler types",
-    "deploy:st": "CLOUDFLARE_ENV=st react-router build && wrangler deploy",
-    "deploy:prod": "CLOUDFLARE_ENV=prod react-router build && wrangler deploy"
+    "deploy:st": "CLOUDFLARE_ENV=st VITE_API_BASE=https://cinema-api-st.yuta-develop-ct.workers.dev react-router build && wrangler deploy",
+    "deploy:prod": "CLOUDFLARE_ENV=prod VITE_API_BASE=REPLACE_WITH_PROD_API_BASE react-router build && wrangler deploy"
   },
   "dependencies": {
     "@cinema/shared": "workspace:*",
