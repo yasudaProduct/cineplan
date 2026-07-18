@@ -126,7 +126,9 @@ export async function reextractFromSnapshot(env: Env, sourceRunId: string): Prom
   const { ext, result } = outcome
 
   const avgCount = await recentAvgCount(env.DB, theater.id)
-  const ng = validateExtracted(result, { avgCount }) ?? validateNormalized(normalize(result))
+  const ng =
+    validateExtracted(result, { avgCount }) ??
+    validateNormalized(normalize(result, theater.scheduleUrl))
   if (ng) {
     const reason = `${ng.code}: ${ng.detail}`
     await createReview(env.DB, { runId, reason, payloadJson: JSON.stringify(result) })
@@ -142,7 +144,14 @@ export async function reextractFromSnapshot(env: Env, sourceRunId: string): Prom
     return { runId, status: 'validation_failed', theaterId: theater.id, error: reason }
   }
 
-  const written = await normalizeResolveWrite(env.DB, theater.id, runId, result, snapshotDate)
+  const written = await normalizeResolveWrite(
+    env.DB,
+    theater.id,
+    runId,
+    result,
+    snapshotDate,
+    theater.scheduleUrl,
+  )
   await completeRun(env.DB, runId, {
     snapshotKey: source.snapshot_key,
     extractedCount: result.screenings.length,

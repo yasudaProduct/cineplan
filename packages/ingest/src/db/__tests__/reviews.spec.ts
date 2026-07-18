@@ -58,16 +58,19 @@ describe('approveReview', () => {
       ingest_run_id: 'run_1',
       payload_json: JSON.stringify(PAYLOAD),
       theater_id: 'thr_a',
+      schedule_url: 'https://example.com/schedule/',
     })
     const r = await approveReview(db, 'rev_1', 'メモ')
     expect(r).toEqual({ written: 5, runId: 'run_1' })
-    // coverageFloor は payload.businessDate（today ではない）
+    // coverageFloor は payload.businessDate（today ではない）。scheduleUrl は detailPath
+    // 絶対化の基準（docs/06 §6.4。review指摘の回帰）としてレビューの theater から渡る。
     expect(writeMock).toHaveBeenCalledWith(
       db,
       'thr_a',
       'run_1',
       expect.objectContaining({ businessDate: '2026-08-15' }),
       '2026-08-15',
+      'https://example.com/schedule/',
     )
     // review→approved / run→succeeded が 1 バッチ
     expect(batched).toHaveLength(1)
@@ -88,6 +91,7 @@ describe('approveReview', () => {
       ingest_run_id: 'run_1',
       payload_json: JSON.stringify({ businessDate: 'bad-date', screenings: [] }),
       theater_id: 'thr_a',
+      schedule_url: 'https://example.com/schedule/',
     })
     await expect(approveReview(db, 'rev_1')).rejects.toThrow()
     expect(writeMock).not.toHaveBeenCalled()

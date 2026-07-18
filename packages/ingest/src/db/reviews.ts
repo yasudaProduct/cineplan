@@ -122,12 +122,19 @@ export async function approveReview(
 ): Promise<{ written: number; runId: string }> {
   const rev = await db
     .prepare(
-      `SELECT v.ingest_run_id, v.payload_json, r.theater_id
-         FROM extraction_reviews v JOIN ingest_runs r ON r.id = v.ingest_run_id
+      `SELECT v.ingest_run_id, v.payload_json, r.theater_id, t.schedule_url
+         FROM extraction_reviews v
+         JOIN ingest_runs r ON r.id = v.ingest_run_id
+         JOIN theaters t ON t.id = r.theater_id
         WHERE v.id=? AND v.status='pending'`,
     )
     .bind(reviewId)
-    .first<{ ingest_run_id: string; payload_json: string; theater_id: string }>()
+    .first<{
+      ingest_run_id: string
+      payload_json: string
+      theater_id: string
+      schedule_url: string
+    }>()
   if (!rev) throw new ReviewNotPendingError(reviewId)
 
   const payload = ExtractionResult.parse(JSON.parse(rev.payload_json))
@@ -137,6 +144,7 @@ export async function approveReview(
     rev.ingest_run_id,
     payload,
     payload.businessDate,
+    rev.schedule_url,
   )
 
   const now = nowIso()

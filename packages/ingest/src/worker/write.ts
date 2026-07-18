@@ -15,8 +15,9 @@ export async function normalizeResolveWrite(
   runId: string,
   result: ExtractionResult,
   coverageFloor: string,
+  scheduleUrl: string,
 ): Promise<number> {
-  const pre = normalize(result)
+  const pre = normalize(result, scheduleUrl)
   const rows: NormalizedScreening[] = []
   for (const p of pre) {
     const movieId = await resolveMovieId(db, p.movieTitle, null)
