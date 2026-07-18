@@ -56,12 +56,15 @@ export function createGeminiClient(opts: { apiKey: string; model: string }): Llm
         },
       }
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${opts.model}:generateContent`
-      // タイムアウトでハングを LLM API エラーに変換（リトライ予算へ乗せる。docs/06 §7）
+      // タイムアウトでハングを LLM API エラーに変換（リトライ予算へ乗せる。docs/06 §7）。
+      // 120秒: rendered 劇場（サイト全体を取得するため htmlToText 後も数万トークン規模になりうる）
+      // では60秒では常時タイムアウトすることを実測で確認（テアトル梅田・約4.5万トークン入力で
+      // 3回とも60秒ちょうどで打ち切られていた）。
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-goog-api-key': opts.apiKey },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(60_000),
+        signal: AbortSignal.timeout(120_000),
       })
       if (!res.ok) {
         throw new Error(`gemini ${res.status}: ${(await res.text()).slice(0, 500)}`)

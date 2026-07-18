@@ -184,7 +184,10 @@ export async function countTodaySiteFetches(
 // 孤児run の掃除（fix/p4-manual-ingest-orphan・docs/06 §7）。ブラウザ接続断などで
 // Workers の実行がキャンセルされ、queued/fetching/extracting のまま更新が止まった run を
 // extraction_failed に確定する。/admin ダッシュボード読込時に呼ばれる（新規 Cron は追加しない）。
-const STALE_RUN_MINUTES = 15 // Gemini抽出の最悪ケース（リトライ込み約5分）に十分な余裕
+// Gemini抽出の最悪ケース（1回120秒 × 最大4回=リトライ予算 LLM_API_MAX_RETRIES(2)+
+// MALFORMED_OUTPUT_MAX_RETRIES(1) の worst-case interleaving ≈ 8分。extract.ts）
+// + rendered fetch のブラウザ起動分に十分な余裕を持たせた値。
+const STALE_RUN_MINUTES = 20
 
 export async function reapStaleRuns(db: D1Database, now: Date = new Date()): Promise<number> {
   const cutoff = new Date(now.getTime() - STALE_RUN_MINUTES * 60_000).toISOString()
