@@ -102,6 +102,8 @@ pnpm -F @cinema/web dev
 
 ※ web は当初 Pages 想定だったが、React Router v8 + Workers（公式 Vite プラグイン）に変更（ADR-0013）。ビルド時に `CLOUDFLARE_ENV=st|prod` で対象環境を選択し、`wrangler deploy` でデプロイする。
 
+**web の API 接続先（`VITE_API_BASE`）に注意**: web はブラウザで動く SPA/SSR なので、api への接続先はサーバ側の wrangler binding ではなく **Vite のビルド時環境変数**で決まり、ビルド成果物の JS に**そのまま焼き込まれる**（`packages/web/app/lib/api.ts`）。未指定時は `http://localhost:8788`（ローカル api dev）にフォールバックするため、**st/prod のビルドで `VITE_API_BASE` を指定し忘れると、本番ブラウザがユーザー自身の PC の localhost へ fetch しようとして常に失敗する**（2026-07-19、ST で実際に発生・原因調査で発覚。`package.json` の `deploy:st`/`deploy:prod` スクリプトに直接埋め込んで解消）。
+
 ### 3.2 wrangler 設定例（api パッケージ）
 
 ```toml
