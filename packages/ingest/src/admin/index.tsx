@@ -27,7 +27,6 @@ import type { Env } from '../env'
 import { assertComplianceGate } from '../worker/compliance-guard'
 import { ComplianceGateError, TheaterNotFoundError } from '../worker/errors'
 import { ingestTheater } from '../worker/pipeline'
-import { reextractFromSnapshot, SnapshotNotFoundError } from '../worker/reextract'
 import { Layout } from './components'
 import { adminGuard } from './guard'
 import { DashboardPage } from './pages/dashboard'
@@ -275,21 +274,15 @@ adminApp.get('/runs/:id', async (c) => {
 })
 
 // R2 再抽出（F-21。先方再取得なし）。prod でも実行可（サイトアクセスが無いため）。
+// Queue に {reextractRunId} で投入し cron/手動取込と同じ consumer 経路で処理する
+// （fix/reextract-orphan・docs/06 §7）。ブラウザ接続に処理を同期させないため、大きな
+// rendered ページで抽出（Gemini呼出）が数分かかっても接続断で孤児化しない。
 adminApp.post('/runs/:id/reextract', async (c) => {
   const id = c.req.param('id')
-  try {
-    const result = await reextractFromSnapshot(c.env, id)
-    const msg =
-      result.status === 'succeeded'
-        ? `再抽出 succeeded（抽出 ${result.extractedCount} / 書込 ${result.writtenCount}）`
-        : `再抽出 ${result.status}: ${result.error ?? ''}`
-    return c.redirect(`/admin/runs/${result.runId}?msg=${encodeURIComponent(msg)}`)
-  } catch (e) {
-    if (e instanceof SnapshotNotFoundError || e instanceof TheaterNotFoundError) {
-      return c.redirect(`/admin/runs/${id}?err=${encodeURIComponent(e.message)}`)
-    }
-    throw e
-  }
+  await c.env.INGEST_QUEUE.send({ reextractRunId: id })
+  const msg =
+    '再抽出をキューに投入しました。数秒後に劇場詳細の直近取込一覧を更新すると結果が反映されます。'
+  return c.redirect(`/admin/runs/${id}?msg=${encodeURIComponent(msg)}`)
 })
 
 // ---- レビューキュー（P4-5）----

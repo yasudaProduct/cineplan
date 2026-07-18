@@ -6,6 +6,14 @@ import { listActiveTheaters } from './db/theaters'
 import type { Env } from './env'
 import { sendSlack } from './worker/notify'
 import { FETCH_FAILED_NOTIFY_AT_ATTEMPT, ingestTheater } from './worker/pipeline'
+import { reextractFromSnapshot } from './worker/reextract'
+
+// Queue メッセージ形（fix/p4-manual-ingest-orphan・fix/reextract-orphan）:
+// - 取込（cron投入・手動取込UI）: { theaterId, trigger }
+// - 再抽出（R2再抽出UI。先方サイトへの再アクセスなし）: { reextractRunId }
+export type IngestQueueMessage =
+  | { theaterId: string; trigger: IngestTrigger }
+  | { reextractRunId: string }
 
 // TravelMatrix 週次再生成の cron パターン（wrangler.toml [env.prod.triggers] と一致させる。docs/14 §3.2）
 const MATRIX_CRON = '0 18 * * 1'
@@ -54,20 +62,28 @@ export default {
     }
   },
 
-  // Queue consumer: 1劇場1ジョブの取込パイプライン。
-  // 管理サイトの手動取込（trigger='manual'）もこの経路を通る（fix/p4-manual-ingest-orphan）:
-  // ブラウザ接続に処理を同期させると、rendered+LLM抽出の途中で接続が切れた際に Workers が
-  // 実行をキャンセルし run が孤児化する不具合があったため。docs/06 §7。
-  // fetch_failed のみ Queues リトライ対象。それ以外の失敗（extraction_failed /
-  // validation_failed / 恒久的エラー）は ack して打ち切る（再取得を伴う再試行をしないため）。
+  // Queue consumer: 1劇場1ジョブの取込パイプライン + R2再抽出。
+  // 管理サイトの手動取込（trigger='manual'）・再抽出（reextractRunId）もこの経路を通る
+  // （fix/p4-manual-ingest-orphan・fix/reextract-orphan）: ブラウザ接続に処理を同期させると、
+  // rendered+LLM抽出の途中で接続が切れた際に Workers が実行をキャンセルし run が孤児化する
+  // 不具合があったため（再抽出は「先方アクセスが無く短時間」という前提だったが、大きな
+  // rendered ページでは抽出自体が数分かかり同じ問題が起きることが実機で判明。docs/06 §7）。
+  // fetch_failed のみ Queues リトライ対象（再抽出は fetch を伴わないため対象外）。
+  // それ以外の失敗（extraction_failed / validation_failed / 恒久的エラー）は ack して打ち切る
+  // （再取得を伴う再試行をしないため）。
   async queue(batch, env): Promise<void> {
     for (const msg of batch.messages) {
-      const body = msg.body as { theaterId?: string; trigger?: IngestTrigger }
-      if (!body.theaterId) {
-        msg.ack()
-        continue
-      }
+      const body = msg.body as Partial<IngestQueueMessage>
       try {
+        if ('reextractRunId' in body && body.reextractRunId) {
+          await reextractFromSnapshot(env, body.reextractRunId)
+          msg.ack()
+          continue
+        }
+        if (!('theaterId' in body) || !body.theaterId) {
+          msg.ack()
+          continue
+        }
         const result = await ingestTheater(
           env,
           body.theaterId,
@@ -81,7 +97,8 @@ export default {
           msg.ack()
         }
       } catch (e) {
-        // TheaterNotFoundError / ComplianceGateError 等の恒久的失敗はリトライしない
+        // TheaterNotFoundError / ComplianceGateError / SnapshotNotFoundError 等の
+        // 恒久的失敗はリトライしない
         console.error('ingest queue error', e)
         msg.ack()
       }
