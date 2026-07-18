@@ -134,6 +134,7 @@ pnpm lint          # Biome
 
 - **/admin の認証**: 一次防御はエッジの Cloudflare Access（P4-1）。コード側 `adminGuard` は local スキップ / `x-admin-token` 一致 or `Cf-Access-Jwt-Assertion` ヘッダ存在で通す（どちらも無ければ 401 = fail closed。docs/14 §4）。**Access 有効化後の ST では curl 手動取込も Access に遮られる**ため、手動取込はブラウザの管理 UI から行う（docs/16 §4.1）。
 - **手動取込の 1日1回ガード（docs/08 §3）**: 当日すでに先方サイトへ取得済み（trigger=cron/manual の run が存在）の場合、UI は明示チェックボックスによる人間判断を要求する。retry（R2 再抽出）はサイトアクセスが無いためカウントしない。
+- **手動取込（UI）は Queue 経由**（`trigger='manual'`）: ブラウザ接続に処理を同期させると、rendered＋LLM抽出の途中で接続が切れた際に Workers が実行をキャンセルし `extracting` のまま孤児化する不具合があったため、cron と同じ consumer 経路に統一（06 §7）。押下直後は投入確認のみ表示し、結果は直近取込一覧で確認する。保険として `reapStaleRuns()` が 15分以上停止した run を `/admin` 読込時に打ち切る。`POST /admin/ingest`（curl 用）のみ同期実行のまま。
 
 Cron（prod のみ・`docs/14`）は `robots_status='allowed'` かつ `terms_checked_at` 設定済みの active 劇場のみ Queue 投入し、consumer が同じパイプラインを実行する（docs/08 の多層防御）。
 

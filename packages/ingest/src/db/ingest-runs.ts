@@ -180,3 +180,21 @@ export async function countTodaySiteFetches(
     .first<{ c: number }>()
   return row?.c ?? 0
 }
+
+// 孤児run の掃除（fix/p4-manual-ingest-orphan・docs/06 §7）。ブラウザ接続断などで
+// Workers の実行がキャンセルされ、queued/fetching/extracting のまま更新が止まった run を
+// extraction_failed に確定する。/admin ダッシュボード読込時に呼ばれる（新規 Cron は追加しない）。
+const STALE_RUN_MINUTES = 15 // Gemini抽出の最悪ケース（リトライ込み約5分）に十分な余裕
+
+export async function reapStaleRuns(db: D1Database, now: Date = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - STALE_RUN_MINUTES * 60_000).toISOString()
+  const errorMessage = `タイムアウト: ${STALE_RUN_MINUTES}分以上 status 更新が無いため打ち切り（実行中の接続断等でバックグラウンド処理が中断された可能性）`
+  const res = await db
+    .prepare(
+      `UPDATE ingest_runs SET status='extraction_failed', error_message=?, finished_at=?
+        WHERE status IN ('queued','fetching','extracting') AND started_at < ?`,
+    )
+    .bind(errorMessage, now.toISOString(), cutoff)
+    .run()
+  return res.meta.changes ?? 0
+}
