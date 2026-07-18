@@ -2,7 +2,13 @@ import { TheaterStatus, TheaterUpsert } from '@cinema/shared'
 import { Hono } from 'hono'
 import { buildTravelMatrix, readTravelMatrixMeta } from '../cron/travel-matrix'
 import { jstDayStartIso, loadDashboard, todayJst } from '../db/admin-queries'
-import { countTodaySiteFetches, getRun, listRuns, recentRunsForTheater } from '../db/ingest-runs'
+import {
+  countTodaySiteFetches,
+  getRun,
+  listRuns,
+  reapStaleRuns,
+  recentRunsForTheater,
+} from '../db/ingest-runs'
 import {
   approveReview,
   getReview,
@@ -18,6 +24,7 @@ import {
   updateTheaterStatus,
 } from '../db/theaters'
 import type { Env } from '../env'
+import { assertComplianceGate } from '../worker/compliance-guard'
 import { ComplianceGateError, TheaterNotFoundError } from '../worker/errors'
 import { ingestTheater } from '../worker/pipeline'
 import { reextractFromSnapshot, SnapshotNotFoundError } from '../worker/reextract'
@@ -54,6 +61,7 @@ adminApp.post('/ingest', async (c) => {
 
 // ---- ダッシュボード（P4-2）----
 adminApp.get('/', async (c) => {
+  await reapStaleRuns(c.env.DB) // 孤児run の掃除（fix/p4-manual-ingest-orphan）
   const d = await loadDashboard(c.env.DB)
   const matrix = await readTravelMatrixMeta(c.env.KV)
   return c.html(
@@ -184,10 +192,25 @@ adminApp.post('/theaters/:id/status', async (c) => {
 
 // 手動取込（F-33。先方サイトへアクセスする）。prod は cron のみ。
 // 同一サイト1日1回（docs/08 §3）: 本日取得済みなら force チェック（人間の明示判断）を要求。
+// Queue に trigger='manual' で投入し cron と同じ consumer 経路で処理する
+// （fix/p4-manual-ingest-orphan・docs/06 §7）。ブラウザ接続に処理を同期させないため、
+// 接続断で run が extracting のまま孤児化する不具合が起きない。
+// コンプライアンスチェックはここで即時実行（ユーザーへの即時フィードバック用）+
+// Queue消費時にも ingestTheater 内で再実行される（cron と同じ多層防御。compliance-guard.ts）。
 adminApp.post('/theaters/:id/ingest', async (c) => {
   const id = c.req.param('id')
   if (c.env.APP_ENV === 'prod') {
     return c.redirect(`/admin/theaters/${id}?err=${encodeURIComponent('prod は cron のみ')}`)
+  }
+  const t = await getTheater(c.env.DB, id)
+  if (!t) return c.notFound()
+  try {
+    assertComplianceGate(t, 'manual')
+  } catch (e) {
+    if (e instanceof ComplianceGateError) {
+      return c.redirect(`/admin/theaters/${id}?err=${encodeURIComponent(e.message)}`)
+    }
+    throw e
   }
   const f = await c.req.formData()
   const force = f.get('force') === '1'
@@ -196,19 +219,10 @@ adminApp.post('/theaters/:id/ingest', async (c) => {
     const msg = `本日すでに ${todayFetches} 回取得済みです。2回目を実行するには「許可する」にチェックしてください（docs/08 §3）`
     return c.redirect(`/admin/theaters/${id}?err=${encodeURIComponent(msg)}`)
   }
-  try {
-    const result = await ingestTheater(c.env, id, 'manual')
-    const msg =
-      result.status === 'succeeded'
-        ? `取込 succeeded（抽出 ${result.extractedCount} / 書込 ${result.writtenCount}）`
-        : `取込 ${result.status}: ${result.error ?? ''}`
-    return c.redirect(`/admin/runs/${result.runId}?msg=${encodeURIComponent(msg)}`)
-  } catch (e) {
-    if (e instanceof ComplianceGateError || e instanceof TheaterNotFoundError) {
-      return c.redirect(`/admin/theaters/${id}?err=${encodeURIComponent(e.message)}`)
-    }
-    throw e
-  }
+  await c.env.INGEST_QUEUE.send({ theaterId: id, trigger: 'manual' })
+  const msg =
+    '取込をキューに投入しました。数秒後にページを更新すると直近の取込に結果が反映されます。'
+  return c.redirect(`/admin/theaters/${id}?msg=${encodeURIComponent(msg)}`)
 })
 
 // ---- 取込履歴（P4-4）----

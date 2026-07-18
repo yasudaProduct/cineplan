@@ -1,3 +1,4 @@
+import type { IngestTrigger } from '@cinema/shared'
 import { Hono } from 'hono'
 import { adminApp } from './admin'
 import { buildTravelMatrix } from './cron/travel-matrix'
@@ -49,22 +50,30 @@ export default {
     }
     const theaters = await listActiveTheaters(env.DB)
     for (const t of theaters) {
-      await env.INGEST_QUEUE.send({ theaterId: t.id })
+      await env.INGEST_QUEUE.send({ theaterId: t.id, trigger: 'cron' })
     }
   },
 
   // Queue consumer: 1劇場1ジョブの取込パイプライン。
-  // fetch_failed のみ Queues リトライ対象（docs/06 §7）。それ以外の失敗（extraction_failed /
+  // 管理サイトの手動取込（trigger='manual'）もこの経路を通る（fix/p4-manual-ingest-orphan）:
+  // ブラウザ接続に処理を同期させると、rendered+LLM抽出の途中で接続が切れた際に Workers が
+  // 実行をキャンセルし run が孤児化する不具合があったため。docs/06 §7。
+  // fetch_failed のみ Queues リトライ対象。それ以外の失敗（extraction_failed /
   // validation_failed / 恒久的エラー）は ack して打ち切る（再取得を伴う再試行をしないため）。
   async queue(batch, env): Promise<void> {
     for (const msg of batch.messages) {
-      const body = msg.body as { theaterId?: string }
+      const body = msg.body as { theaterId?: string; trigger?: IngestTrigger }
       if (!body.theaterId) {
         msg.ack()
         continue
       }
       try {
-        const result = await ingestTheater(env, body.theaterId, 'cron', msg.attempts)
+        const result = await ingestTheater(
+          env,
+          body.theaterId,
+          body.trigger ?? 'cron',
+          msg.attempts,
+        )
         if (result.status === 'fetch_failed' && msg.attempts < FETCH_FAILED_NOTIFY_AT_ATTEMPT) {
           const delaySeconds = RETRY_BASE_DELAY_SECONDS * 2 ** (msg.attempts - 1) // 5分・10分…
           msg.retry({ delaySeconds })

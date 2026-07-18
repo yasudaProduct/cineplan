@@ -122,6 +122,7 @@
   - Done ✓: 5ウィジェット（本日の取込状況/明日分の鮮度%（N-02）/レビュー待ちバッジ/LLMトークン7日スパークライン/規約90日期限警告）を実データでブラウザ E2E。ingest を Hono 化し `/admin` を Hono JSX SSR（client JS なし・docs/07 §3）で実装。
 - [x] **P4-3 劇場マスタ CRUD + 手動取込 + 新規は paused 起票**（§2.3）
   - Done ✓: ブラウザ E2E で 新規登録（**paused 強制**）→ active 昇格が robots/terms 不備で**サーバ拒否** → 記入後に active 成功 → retired、を実機確認。手動取込ボタンは 1日1回ガード（当日取得済みなら明示チェック要求。retry は数えない）+ prod 無効。robots.txt 確認リンク。入力は shared の `TheaterUpsert`（zod）で検証。
+  - **2026-07-15 追記（不具合修正）**: ST で手動取込ボタンが `extracting` のまま孤児化する不具合を発見（ブラウザ接続断で Workers 実行がキャンセルされるため。`ctx.waitUntil()` は送信後最大30秒しか延長できず不十分と判明）。**手動取込を Queue 投入方式（`trigger='manual'`）に変更し cron と同じ consumer 経路で処理**するよう修正（`fix/p4-manual-ingest-orphan`）。保険として `reapStaleRuns()`（15分以上停止した run を `extraction_failed` に確定）を追加。06 §7・07 §2.3 更新。
 - [x] **P4-4 取込履歴 + R2 再抽出**（§2.4）
   - Done ✓: 一覧（劇場/status フィルタ・50件ページング）・詳細（全項目+スナップショットリンク）。**R2 再抽出をブラウザ E2E**: trigger=`retry` の新 run が succeeded（136件・実 Gemini・**先方サイトへアクセスなし**）。coverageFloor はスナップショット取得日（today だと月跨ぎで新データを消すため。write.ts）。
 - [x] **P4-5 レビューキュー**（§2.5、承認は通常書込パスで反映）
