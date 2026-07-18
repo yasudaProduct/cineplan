@@ -18,11 +18,13 @@ function sc(
 function result(screenings: ExtractedScreening[], notes: string | null = null): ExtractionResult {
   return { businessDate: '2026-07-10', screenings, notes }
 }
+const SCHEDULE_URL = 'https://example.com/schedule/'
 
 describe('normalize', () => {
   it('通常時刻を UTC 化し、endTime 無しは推定(+130分)', () => {
     const [row] = normalize(
       result([sc({ date: '2026-07-11', movieTitle: 'X', startTime: '10:30' })]),
+      SCHEDULE_URL,
     )
     expect(row.startAt).toBe('2026-07-11T01:30:00.000Z') // 10:30 JST
     expect(row.endAtSource).toBe('estimated')
@@ -32,16 +34,18 @@ describe('normalize', () => {
   it('24時超え表記を翌日に正規化', () => {
     const [row] = normalize(
       result([sc({ date: '2026-07-11', movieTitle: 'Late', startTime: '25:10' })]),
+      SCHEDULE_URL,
     )
     expect(row.startAt).toBe('2026-07-11T16:10:00.000Z') // 翌 01:10 JST
   })
   it('date 省略時は ExtractionResult.businessDate を使う', () => {
-    const [row] = normalize(result([sc({ movieTitle: 'Y', startTime: '12:00' })]))
+    const [row] = normalize(result([sc({ movieTitle: 'Y', startTime: '12:00' })]), SCHEDULE_URL)
     expect(row.businessDate).toBe('2026-07-10')
   })
   it('endTime 記載はそのまま site', () => {
     const [row] = normalize(
       result([sc({ date: '2026-07-11', movieTitle: 'Z', startTime: '10:30', endTime: '12:30' })]),
+      SCHEDULE_URL,
     )
     expect(row.endAtSource).toBe('site')
     expect(row.endAt).toBe('2026-07-11T03:30:00.000Z')
@@ -49,10 +53,62 @@ describe('normalize', () => {
   it('screenName を引き継ぐ（null は ""）', () => {
     const [a] = normalize(
       result([sc({ movieTitle: 'A', startTime: '10:00', screenName: 'シネ・ヌーヴォX' })]),
+      SCHEDULE_URL,
     )
     expect(a.screenName).toBe('シネ・ヌーヴォX')
-    const [b] = normalize(result([sc({ movieTitle: 'B', startTime: '10:00' })]))
+    const [b] = normalize(result([sc({ movieTitle: 'B', startTime: '10:00' })]), SCHEDULE_URL)
     expect(b.screenName).toBe('')
+  })
+
+  // review指摘: テアトル梅田で /ttcg_umeda/movie/xxx.html のような相対 detailPath が
+  // そのまま D1 に保存され、Plan の ScreeningLeg.officialUrl（z.string().url() 必須）
+  // が invalid_string で落ちていた。docs/06 §6.4「相対URLは scheduleUrl 基準で絶対化」が
+  // 未実装だったことが原因。
+  describe('detailUrl（相対URLの絶対化。docs/06 §6.4）', () => {
+    it('相対パスは scheduleUrl 基準で絶対化する', () => {
+      const [row] = normalize(
+        result([
+          sc({ movieTitle: 'A', startTime: '10:00', detailPath: '/ttcg_umeda/movie/123.html' }),
+        ]),
+        'https://ttcg.jp/ttcg_umeda/',
+      )
+      expect(row.detailUrl).toBe('https://ttcg.jp/ttcg_umeda/movie/123.html')
+    })
+    it('絶対URL（外部ドメイン・チケットベンダー等）はそのまま保持する', () => {
+      const [row] = normalize(
+        result([
+          sc({
+            movieTitle: 'A',
+            startTime: '10:00',
+            detailPath: 'https://reserve.example.net/reserve?schedule=1',
+          }),
+        ]),
+        'https://theater.example.com/schedule/',
+      )
+      expect(row.detailUrl).toBe('https://reserve.example.net/reserve?schedule=1')
+    })
+    it('detailPath が null/undefined なら detailUrl も null（呼び出し側で officialUrl にフォールバック）', () => {
+      const [row] = normalize(
+        result([sc({ movieTitle: 'A', startTime: '10:00', detailPath: null })]),
+        SCHEDULE_URL,
+      )
+      expect(row.detailUrl).toBeNull()
+    })
+    it('http(s) 以外のスキーム（javascript: 等、href 誤抽出の混入を想定）は null にする', () => {
+      const [row] = normalize(
+        result([sc({ movieTitle: 'A', startTime: '10:00', detailPath: 'javascript:void(0)' })]),
+        SCHEDULE_URL,
+      )
+      expect(row.detailUrl).toBeNull()
+    })
+    it('絶対化してもパース不能な文字列は null にする（クラッシュしない）', () => {
+      // 'http://'（スキームのみでホスト無し）は new URL() が Invalid URL を throw する実例
+      const [row] = normalize(
+        result([sc({ movieTitle: 'A', startTime: '10:00', detailPath: 'http://' })]),
+        SCHEDULE_URL,
+      )
+      expect(row.detailUrl).toBeNull()
+    })
   })
 })
 
@@ -112,18 +168,21 @@ describe('validateNormalized (V3/V4)', () => {
   it('V4: endTime指定で end<=start は NEGATIVE_DURATION', () => {
     const rows = normalize(
       result([sc({ date: '2026-07-11', movieTitle: 'Bad', startTime: '12:00', endTime: '11:00' })]),
+      SCHEDULE_URL,
     )
     expect(validateNormalized(rows)?.code).toBe('NEGATIVE_DURATION')
   })
   it('V3: 範囲外時刻は TIME_OUT_OF_RANGE', () => {
     const rows = normalize(
       result([sc({ date: '2026-07-11', movieTitle: 'Early', startTime: '05:00' })]),
+      SCHEDULE_URL,
     )
     expect(validateNormalized(rows)?.code).toBe('TIME_OUT_OF_RANGE')
   })
   it('正常は通過', () => {
     const rows = normalize(
       result([sc({ date: '2026-07-11', movieTitle: 'OK', startTime: '10:30', endTime: '12:30' })]),
+      SCHEDULE_URL,
     )
     expect(validateNormalized(rows)).toBeNull()
   })

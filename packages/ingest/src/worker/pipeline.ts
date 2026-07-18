@@ -129,13 +129,20 @@ export async function ingestTheater(
   if (ng1) return await toReview(env, runId, theaterId, theater.name, result, ng1, prefix)
 
   // 6. 正規化 + V3/4
-  const pre = normalize(result)
+  const pre = normalize(result, theater.scheduleUrl)
   const ng2 = validateNormalized(pre)
   if (ng2) return await toReview(env, runId, theaterId, theater.name, result, ng2, prefix)
 
   // 7〜8. 通常書込パス（正規化→movie解決→洗い替え。承認/再抽出と同一関数・write.ts）。
   //    coverageFloor=fetch 当日で stale データを防ぐ（docs/03 §7）。
-  const written = await normalizeResolveWrite(env.DB, theaterId, runId, result, businessDate)
+  const written = await normalizeResolveWrite(
+    env.DB,
+    theaterId,
+    runId,
+    result,
+    businessDate,
+    theater.scheduleUrl,
+  )
   await completeRun(env.DB, runId, {
     snapshotKey: prefix,
     extractedCount: result.screenings.length,
