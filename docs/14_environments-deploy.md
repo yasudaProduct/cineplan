@@ -153,6 +153,7 @@ APP_ENV = "prod"
 - ingest パッケージも同様に `[env.st]` / `[env.prod]` を定義（Queues・R2・Cron 含む）。
 - **Cron は本番のみ有効**にし、st では手動トリガー中心にする（st が先方サイトを毎日叩かないようにする。`08` の取得マナー）。st で定期実行を検証したい期間だけ Cron を一時有効化する運用とする。
 - prod の Cron は2本: 取込ディスパッチ（毎日 21:00 UTC = 06:00 JST）と TravelMatrix 週次再生成（月曜 18:00 UTC = 火曜 03:00 JST。ADR-0014）。`scheduled` ハンドラは `controller.cron` の一致で分岐する。st では管理サイトから手動再生成できる。
+- **Workers Logs（観測性。2026-07-19 追加）**: ingest は `[observability] enabled = true` を既定/`[env.st.observability]`/`[env.prod.observability]` の3箇所に定義し、構造化ログ（`packages/ingest/src/log.ts`）を保存・検索可能にする。サンプリング100%・保持は Workers Paid で7日。observability は環境セクションへ継承されないため環境ごとに明示する。イベント台帳は `packages/ingest/README.md`、ログの見方は `16` §6。
 
 ## 4. シークレット・環境変数
 
@@ -338,6 +339,7 @@ prod:   （v* タグ + 承認で Actions が）apply ... cinema_hashigo_prod --e
 | 外部API/通知 | Compose スタブ | 実サービス（低頻度） | 実サービス |
 | Cron（取込定期実行） | エミュレート | 原則OFF（検証時のみON） | ON |
 | Browser Rendering | ローカル Chromium 起動（実機同等） | 有効 | 有効 |
+| Workers Logs（ingest） | dev コンソール出力のみ | 有効（保持7日） | 有効（保持7日） |
 | Access（管理サイト） | 省略可 | 有効 | 有効 |
 | シークレット源 | `.dev.vars` | wrangler secret (st) | wrangler secret (prod) |
 | デプロイ | 手元実行 | main push（自動） | v* タグ＋承認 |

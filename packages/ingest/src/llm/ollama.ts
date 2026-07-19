@@ -1,4 +1,11 @@
-import type { ExtractInput, LlmClient, LlmResult } from './types'
+import { logError, logInfo } from '../log'
+import {
+  type ExtractInput,
+  isTimeoutAbort,
+  LlmApiError,
+  type LlmClient,
+  type LlmResult,
+} from './types'
 
 // 開発専用（ADR-0011）。/api/chat・format=JSONスキーマ（構造化出力）。vision は message.images に base64。
 // 品質確定は本番プロバイダ（Gemini）で行うこと（「Ollama で通った ≠ Gemini で通る」）。
@@ -56,18 +63,55 @@ export function createOllamaClient(opts: { baseUrl: string; model: string }): Ll
         stream: false,
         options: { temperature: 0 },
       }
-      const res = await fetch(`${base}/api/chat`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(300_000), // ローカルモデルは遅いため長め
-      })
+      // 失敗は timeout / http / network に分類して投げる（gemini.ts と同じ。README イベント台帳）。
+      const startedAt = Date.now()
+      let res: Response
+      try {
+        res = await fetch(`${base}/api/chat`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(300_000), // ローカルモデルは遅いため長め
+        })
+      } catch (e) {
+        const ms = Date.now() - startedAt
+        const err = isTimeoutAbort(e)
+          ? new LlmApiError(`ollama timeout: ${ms}ms 経過`, 'timeout', { provider: 'ollama', ms })
+          : new LlmApiError(`ollama network error: ${(e as Error).message}`, 'network', {
+              provider: 'ollama',
+              ms,
+            })
+        logError('llm.call.fail', err, { provider: 'ollama', model: modelId, ms, kind: err.kind })
+        throw err
+      }
+      const ms = Date.now() - startedAt
       if (!res.ok) {
-        throw new Error(`ollama ${res.status}: ${(await res.text()).slice(0, 500)}`)
+        const err = new LlmApiError(
+          `ollama ${res.status}: ${(await res.text()).slice(0, 500)}`,
+          'http',
+          { provider: 'ollama', ms, status: res.status },
+        )
+        logError('llm.call.fail', err, {
+          provider: 'ollama',
+          model: modelId,
+          ms,
+          kind: 'http',
+          status: res.status,
+        })
+        throw err
       }
       const json = (await res.json()) as OllamaChatResponse
+      const raw = json.message?.content ?? ''
+      logInfo('llm.call.ok', {
+        provider: 'ollama',
+        model: modelId,
+        ms,
+        inTokens: json.prompt_eval_count ?? null,
+        outTokens: json.eval_count ?? null,
+        rawChars: raw.length,
+      })
       return {
-        raw: json.message?.content ?? '',
+        raw,
         model: modelId,
         inTokens: json.prompt_eval_count ?? null,
         outTokens: json.eval_count ?? null,

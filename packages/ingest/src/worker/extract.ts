@@ -7,6 +7,7 @@ import {
 import { buildVisionV1SystemPrompt, VISION_V1_VERSION } from '../extraction/prompts/vision_v1'
 import type { ExtractInput, ImagePart, LlmEnv } from '../llm'
 import { createLlmClient, stripJsonFence } from '../llm'
+import { errorFields, logError, logInfo } from '../log'
 import { parseExtraction } from './validate'
 
 export class ExtractionParseError extends Error {
@@ -93,6 +94,15 @@ export interface ExtractWithRetriesResult {
   result: ExtractionResult
 }
 
+// 予算切れの最終エラーは経緯を前置して投げ直す。D1 の error_message（管理画面）だけで
+// 「何をどれだけ試して失敗したか」が読めるように（feat/ingest-observability・docs/06 §7）。
+function budgetExhausted(e: unknown, apiFailures: number, malformedFailures: number): Error {
+  const detail = e instanceof Error ? e.message : String(e)
+  return new Error(
+    `抽出リトライ予算切れ（LLM呼出${apiFailures + malformedFailures}回: APIエラー${apiFailures}・出力不正${malformedFailures}）: ${detail.slice(0, 500)}`,
+  )
+}
+
 // 抽出 + zod 検証を、docs/06 §7 のリトライ予算内でリトライしながら行う（方式共通）。
 // 予算を使い切って尚失敗した場合はその時点のエラーを throw する（呼び出し側で extraction_failed 確定）。
 async function withRetries(
@@ -100,6 +110,8 @@ async function withRetries(
 ): Promise<ExtractWithRetriesResult> {
   let apiRetriesLeft = LLM_API_MAX_RETRIES
   let malformedRetriesLeft = MALFORMED_OUTPUT_MAX_RETRIES
+  let apiFailures = 0
+  let malformedFailures = 0
 
   for (;;) {
     let ext: ExtractOutcome
@@ -107,27 +119,37 @@ async function withRetries(
       ext = await attempt()
     } catch (e) {
       if (e instanceof ExtractionParseError) {
+        malformedFailures++
         if (malformedRetriesLeft > 0) {
           malformedRetriesLeft--
+          logInfo('llm.retry', { kind: 'parse', malformedRetriesLeft, error: errorFields(e) })
           continue
         }
-        throw e
+        logError('llm.giveup', e, { kind: 'parse', apiFailures, malformedFailures })
+        throw budgetExhausted(e, apiFailures, malformedFailures)
       }
+      apiFailures++
       if (apiRetriesLeft > 0) {
         apiRetriesLeft--
+        // API 呼出自体の失敗詳細（timeout/http/network・ms・status）は llm.call.fail 済み
+        logInfo('llm.retry', { kind: 'api', apiRetriesLeft, error: errorFields(e) })
         continue
       }
-      throw e
+      logError('llm.giveup', e, { kind: 'api', apiFailures, malformedFailures })
+      throw budgetExhausted(e, apiFailures, malformedFailures)
     }
     try {
       const result = parseExtraction(ext.parsed)
       return { ext, result }
     } catch (zodErr) {
+      malformedFailures++
       if (malformedRetriesLeft > 0) {
         malformedRetriesLeft--
+        logInfo('llm.retry', { kind: 'schema', malformedRetriesLeft, error: errorFields(zodErr) })
         continue
       }
-      throw zodErr
+      logError('llm.giveup', zodErr, { kind: 'schema', apiFailures, malformedFailures })
+      throw budgetExhausted(zodErr, apiFailures, malformedFailures)
     }
   }
 }

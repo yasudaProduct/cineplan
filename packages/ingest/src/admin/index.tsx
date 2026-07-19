@@ -24,6 +24,7 @@ import {
   updateTheaterStatus,
 } from '../db/theaters'
 import type { Env } from '../env'
+import { logError, logInfo } from '../log'
 import { assertComplianceGate } from '../worker/compliance-guard'
 import { ComplianceGateError, TheaterNotFoundError } from '../worker/errors'
 import { ingestTheater } from '../worker/pipeline'
@@ -49,6 +50,7 @@ adminApp.post('/ingest', async (c) => {
   const theaterId = c.req.query('theaterId')
   if (!theaterId) return c.json({ error: 'theaterId required' }, 400)
   try {
+    logInfo('admin.ingest.sync', { theaterId })
     const result = await ingestTheater(c.env, theaterId, 'manual')
     return c.json(result)
   } catch (e) {
@@ -60,7 +62,9 @@ adminApp.post('/ingest', async (c) => {
 
 // ---- ダッシュボード（P4-2）----
 adminApp.get('/', async (c) => {
-  await reapStaleRuns(c.env.DB) // 孤児run の掃除（fix/p4-manual-ingest-orphan）
+  // 孤児run の掃除（fix/p4-manual-ingest-orphan）。掃除した run はログに残す。
+  const reaped = await reapStaleRuns(c.env.DB)
+  if (reaped.length > 0) logInfo('reap.done', { count: reaped.length, runIds: reaped })
   const d = await loadDashboard(c.env.DB)
   const matrix = await readTravelMatrixMeta(c.env.KV)
   return c.html(
@@ -73,6 +77,7 @@ adminApp.get('/', async (c) => {
 // TravelMatrix 手動再生成（P4-6・ADR-0014）。外部は経路探索 API のみ（先方劇場サイトへは
 // アクセスしないため prod でも実行可）。劇場数 n の直列リクエスト n(n-1) 件・1秒間隔。
 adminApp.post('/travel-matrix/rebuild', async (c) => {
+  logInfo('admin.matrix.rebuild', {})
   const r = await buildTravelMatrix(c.env)
   const msg = `TravelMatrix 再生成: ${r.theaters}劇場 ${r.pairs}ペア（更新${r.updated}/温存${r.carried}/欠損${r.missing}${r.skippedWrite ? '・全滅のため未書込' : ''}）`
   return c.redirect(`/admin?msg=${encodeURIComponent(msg)}`)
@@ -184,6 +189,7 @@ adminApp.post('/theaters/:id/status', async (c) => {
     return c.redirect(`/admin/theaters/${id}?err=${encodeURIComponent(msg)}`)
   }
   await updateTheaterStatus(c.env.DB, id, parsed.data)
+  logInfo('admin.theater.status', { theaterId: id, from: t.status, to: parsed.data })
   return c.redirect(
     `/admin/theaters/${id}?msg=${encodeURIComponent(`status を ${parsed.data} にしました`)}`,
   )
@@ -219,6 +225,7 @@ adminApp.post('/theaters/:id/ingest', async (c) => {
     return c.redirect(`/admin/theaters/${id}?err=${encodeURIComponent(msg)}`)
   }
   await c.env.INGEST_QUEUE.send({ theaterId: id, trigger: 'manual' })
+  logInfo('admin.enqueue.ingest', { theaterId: id, force, todayFetches })
   const msg =
     '取込をキューに投入しました。数秒後にページを更新すると直近の取込に結果が反映されます。'
   return c.redirect(`/admin/theaters/${id}?msg=${encodeURIComponent(msg)}`)
@@ -280,6 +287,7 @@ adminApp.get('/runs/:id', async (c) => {
 adminApp.post('/runs/:id/reextract', async (c) => {
   const id = c.req.param('id')
   await c.env.INGEST_QUEUE.send({ reextractRunId: id })
+  logInfo('admin.enqueue.reextract', { sourceRunId: id })
   const msg =
     '再抽出をキューに投入しました。数秒後に劇場詳細の直近取込一覧を更新すると結果が反映されます。'
   return c.redirect(`/admin/runs/${id}?msg=${encodeURIComponent(msg)}`)
@@ -324,6 +332,7 @@ adminApp.post('/reviews/:id/approve', async (c) => {
   const note = String(f.get('note') ?? '').trim() || undefined
   try {
     const { written } = await approveReview(c.env.DB, id, note)
+    logInfo('admin.review.approve', { reviewId: id, written })
     return c.redirect(
       `/admin/reviews/${id}?msg=${encodeURIComponent(`承認して ${written} 件を反映しました`)}`,
     )
@@ -332,6 +341,7 @@ adminApp.post('/reviews/:id/approve', async (c) => {
       return c.redirect(`/admin/reviews/${id}?err=${encodeURIComponent(e.message)}`)
     }
     // payload の zod 不整合等は err として画面に返す（500 にしない）
+    logError('admin.review.approve.fail', e, { reviewId: id })
     return c.redirect(
       `/admin/reviews/${id}?err=${encodeURIComponent(`反映失敗: ${(e as Error).message.slice(0, 200)}`)}`,
     )
@@ -348,6 +358,7 @@ adminApp.post('/reviews/:id/reject', async (c) => {
     )
   }
   const ok = await rejectReview(c.env.DB, id, note)
+  if (ok) logInfo('admin.review.reject', { reviewId: id })
   return ok
     ? c.redirect(`/admin/reviews/${id}?msg=${encodeURIComponent('破棄しました')}`)
     : c.redirect(`/admin/reviews/${id}?err=${encodeURIComponent('pending ではありません')}`)

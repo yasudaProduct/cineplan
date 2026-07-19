@@ -189,15 +189,18 @@ export async function countTodaySiteFetches(
 // + rendered fetch のブラウザ起動分に十分な余裕を持たせた値。
 const STALE_RUN_MINUTES = 20
 
-export async function reapStaleRuns(db: D1Database, now: Date = new Date()): Promise<number> {
+// 戻り値は掃除した run の id 一覧（呼び出し側で reap.done ログに載せ、Workers Logs から
+// 「いつ・どの run が孤児として確定されたか」を追跡できるようにする）。
+export async function reapStaleRuns(db: D1Database, now: Date = new Date()): Promise<string[]> {
   const cutoff = new Date(now.getTime() - STALE_RUN_MINUTES * 60_000).toISOString()
   const errorMessage = `タイムアウト: ${STALE_RUN_MINUTES}分以上 status 更新が無いため打ち切り（実行中の接続断等でバックグラウンド処理が中断された可能性）`
-  const res = await db
+  const { results } = await db
     .prepare(
       `UPDATE ingest_runs SET status='extraction_failed', error_message=?, finished_at=?
-        WHERE status IN ('queued','fetching','extracting') AND started_at < ?`,
+        WHERE status IN ('queued','fetching','extracting') AND started_at < ?
+        RETURNING id`,
     )
     .bind(errorMessage, now.toISOString(), cutoff)
-    .run()
-  return res.meta.changes ?? 0
+    .all<{ id: string }>()
+  return results.map((r) => r.id)
 }

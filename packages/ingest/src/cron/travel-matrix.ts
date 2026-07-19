@@ -3,6 +3,7 @@ import { TRAVEL_MATRIX_KV_KEY, TravelMatrix } from '@cinema/shared'
 import { addDays, todayJst } from '../db/admin-queries'
 import { listAllTheaters } from '../db/theaters'
 import type { Env } from '../env'
+import { logError, logInfo } from '../log'
 import { USER_AGENT } from '../worker/fetch'
 
 // TravelMatrix 週次生成（P4-6・docs/03 §5.1・ADR-0014）。
@@ -41,12 +42,15 @@ export function representativeDate(now: Date = new Date()): string {
 // 1ペア分の経路取得 → { minutes, summary } | null。
 // door-to-door 分 = ceil((accessWalkSecs + durationSecs) / 60)（egress は durationSecs に含まれる。
 // 実 API で確認済み・docs/03 §5.1）。複数案の最小値を採る。
+// label はログ用のペア識別子（例 'thr_a>thr_b'）。失敗は matrix.pair.fail に記録し null を返す
+// （呼出側は前回値温存 = 従来挙動のまま。どのペアがなぜ失敗したかだけ可視化する）。
 export async function fetchPairMinutes(
   apiBase: string,
   from: { lat: number; lng: number },
   to: { lat: number; lng: number },
   dateYyyymmdd: string,
   fetchFn: typeof fetch = fetch,
+  label?: string,
 ): Promise<{ minutes: number; summary: string | null } | null> {
   const params = new URLSearchParams({
     from: `geo:${from.lat},${from.lng}`,
@@ -60,10 +64,20 @@ export async function fetchPairMinutes(
       headers: { 'user-agent': USER_AGENT },
       signal: AbortSignal.timeout(PLAN_TIMEOUT_MS),
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      logError('matrix.pair.fail', new Error(`HTTP ${res.status}`), {
+        pair: label,
+        kind: 'http',
+        status: res.status,
+      })
+      return null
+    }
     const body = (await res.json()) as { journeys?: PlanJourney[] }
     const journeys = (body.journeys ?? []).filter((j) => typeof j.durationSecs === 'number')
-    if (journeys.length === 0) return null
+    if (journeys.length === 0) {
+      logInfo('matrix.pair.empty', { pair: label })
+      return null
+    }
     let best: PlanJourney | null = null
     let bestSecs = Number.POSITIVE_INFINITY
     for (const j of journeys) {
@@ -78,7 +92,8 @@ export async function fetchPairMinutes(
       .filter((l) => l.kind === 'transit' && l.routeName)
       .map((l) => l.routeName as string)
     return { minutes: Math.ceil(bestSecs / 60), summary: lines.length > 0 ? lines.join('→') : null }
-  } catch {
+  } catch (e) {
+    logError('matrix.pair.fail', e, { pair: label, kind: 'network' })
     return null
   }
 }
@@ -110,6 +125,7 @@ export async function buildTravelMatrix(
     return typeof v === 'number' ? v : null
   }
 
+  const buildStartedAt = Date.now()
   const n = ids.length
   const matrix: (number | null)[][] = Array.from({ length: n }, () => Array(n).fill(null))
   const summaries: Record<string, string> = { ...(old?.success ? old.data.summaries : undefined) }
@@ -135,6 +151,7 @@ export async function buildTravelMatrix(
         { lat: b.lat, lng: b.lng },
         date,
         fetchFn,
+        `${a.id}>${b.id}`,
       )
       if (r) {
         row[j] = r.minutes
@@ -165,6 +182,15 @@ export async function buildTravelMatrix(
     }
     await env.KV.put(TRAVEL_MATRIX_KV_KEY, JSON.stringify(TravelMatrix.parse(value)))
   }
+  logInfo('matrix.done', {
+    theaters: n,
+    pairs,
+    updated,
+    carried,
+    missing,
+    skippedWrite,
+    ms: Date.now() - buildStartedAt,
+  })
   return { theaters: n, pairs, updated, carried, missing, skippedWrite }
 }
 

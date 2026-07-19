@@ -222,6 +222,19 @@ Claude Code が用意する文面（利用規約 / プライバシーポリシ�
 | 随時 | 劇場からの停止依頼 → 当該劇場を即 `paused`/`retired`（`08` §3） |
 | 随時 | Google AI Studio（無料枠の消費/超過）・Cloudflare の請求額確認（N-04: 月 3,000 円以内） |
 
+### 6.1 ログの見方（Workers Logs。取込の調査手順）
+
+取込が失敗した・件数が想定と違う等の調査は、まず管理サイトの取込詳細（`error_message`。LLM 失敗は timeout / 429 等に分類済み）を見て、足りなければ Workers Logs を開く。
+
+1. Cloudflare ダッシュボード → Workers & Pages → `cinema-ingest-st`（prod は `cinema-ingest-prod`）→ **Logs**。
+2. 構造化フィールドで絞り込む（イベント台帳は `packages/ingest/README.md`）。よく使うフィルタ:
+   - `event = "run.done"` … 取込1回ごとの最終結果一覧（status / extracted / written）
+   - `runId = "run_xxxx"` … その取込の全行程（fetch → 抽出 → 書込）を時系列表示
+   - `event = "llm.call.fail"` … LLM 呼出失敗の分類（kind: timeout / http / network。http の status=429 ならレート制限）
+   - `event = "reap.done"` … 孤児 run 掃除の記録（どの run がいつ確定されたか）
+3. リアルタイム確認は手元から: `pnpm -F @cinema/ingest exec wrangler tail --env st --format pretty`
+- ログ保持は7日（Workers Paid）。それより古い調査は D1 の `ingest_runs` と R2 スナップショットが正。
+
 ## 7. ランニングコスト概算（N-04 との突合・2026-07 時点の概算）
 
 | 項目 | 月額目安 |

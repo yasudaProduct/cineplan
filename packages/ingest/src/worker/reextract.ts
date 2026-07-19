@@ -2,6 +2,7 @@ import { completeRun, createIngestRun, failRun, getRun } from '../db/ingest-runs
 import { createReview, recentAvgCount } from '../db/reviews'
 import { getTheater } from '../db/theaters'
 import type { Env } from '../env'
+import { logError, logInfo } from '../log'
 import { TheaterNotFoundError } from './errors'
 import { extractTextWithRetries, extractVisionWithRetries } from './extract'
 import type { FetchedImage } from './fetch'
@@ -97,8 +98,19 @@ export async function reextractFromSnapshot(env: Env, sourceRunId: string): Prom
     trigger: 'retry',
     status: 'extracting',
   })
+  logInfo('run.start', {
+    runId,
+    theaterId: theater.id,
+    trigger: 'retry',
+    businessDate: snapshotDate,
+    sourceRunId,
+    extractMethod: theater.extractMethod,
+    inputChars: extractInput.kind === 'text' ? extractInput.text.length : undefined,
+    images: extractInput.kind === 'vision' ? extractInput.images.length : undefined,
+  })
 
   // 抽出（リトライ込み・docs/06 §7）→ 検証 → 通常書込パス（pipeline と同一）
+  const extractStartedAt = Date.now()
   let outcome: Awaited<ReturnType<typeof extractVisionWithRetries>>
   try {
     outcome =
@@ -112,10 +124,21 @@ export async function reextractFromSnapshot(env: Env, sourceRunId: string): Prom
           )
   } catch (e) {
     const msg = (e as Error).message
+    logError('run.extract.fail', e, {
+      runId,
+      theaterId: theater.id,
+      ms: Date.now() - extractStartedAt,
+    })
     await failRun(env.DB, runId, {
       status: 'extraction_failed',
       errorMessage: msg,
       snapshotKey: source.snapshot_key,
+    })
+    logInfo('run.done', {
+      runId,
+      theaterId: theater.id,
+      status: 'extraction_failed',
+      error: msg.slice(0, 500),
     })
     await sendSlack(
       env.SLACK_WEBHOOK_URL,
@@ -124,6 +147,15 @@ export async function reextractFromSnapshot(env: Env, sourceRunId: string): Prom
     return { runId, status: 'extraction_failed', theaterId: theater.id, error: msg }
   }
   const { ext, result } = outcome
+  logInfo('run.extract.ok', {
+    runId,
+    theaterId: theater.id,
+    ms: Date.now() - extractStartedAt,
+    model: ext.model,
+    inTokens: ext.inTokens,
+    outTokens: ext.outTokens,
+    screenings: result.screenings.length,
+  })
 
   const avgCount = await recentAvgCount(env.DB, theater.id)
   const ng =
@@ -136,6 +168,18 @@ export async function reextractFromSnapshot(env: Env, sourceRunId: string): Prom
       status: 'validation_failed',
       errorMessage: reason,
       snapshotKey: source.snapshot_key,
+    })
+    logInfo('run.validate.ng', {
+      runId,
+      theaterId: theater.id,
+      code: ng.code,
+      detail: ng.detail.slice(0, 500),
+    })
+    logInfo('run.done', {
+      runId,
+      theaterId: theater.id,
+      status: 'validation_failed',
+      error: reason.slice(0, 500),
     })
     await sendSlack(
       env.SLACK_WEBHOOK_URL,
@@ -160,6 +204,13 @@ export async function reextractFromSnapshot(env: Env, sourceRunId: string): Prom
     inTokens: ext.inTokens,
     outTokens: ext.outTokens,
     promptVersion: ext.promptVersion,
+  })
+  logInfo('run.done', {
+    runId,
+    theaterId: theater.id,
+    status: 'succeeded',
+    extracted: result.screenings.length,
+    written,
   })
   return {
     runId,
