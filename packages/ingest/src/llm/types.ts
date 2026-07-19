@@ -24,3 +24,26 @@ export interface LlmClient {
   readonly modelId: string
   extract(input: ExtractInput): Promise<LlmResult>
 }
+
+// LLM API 呼出の失敗分類（feat/ingest-observability）。
+// timeout: AbortSignal.timeout 発火（応答が返らないままクライアント側で打ち切り）
+// http: HTTP エラー応答（429=レート制限・503=過負荷 等。status とボディ断片を保持）
+// network: fetch 自体の失敗（DNS・接続断 等）
+export type LlmApiErrorKind = 'timeout' | 'http' | 'network'
+
+export class LlmApiError extends Error {
+  constructor(
+    message: string,
+    readonly kind: LlmApiErrorKind,
+    readonly meta: { provider: string; ms: number; status?: number },
+  ) {
+    super(message)
+    this.name = 'LlmApiError'
+  }
+}
+
+// AbortSignal.timeout の発火は環境により TimeoutError / AbortError の DOMException になる。
+export function isTimeoutAbort(e: unknown): boolean {
+  const name = (e as { name?: string } | null)?.name
+  return name === 'TimeoutError' || name === 'AbortError'
+}

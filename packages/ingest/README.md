@@ -26,12 +26,43 @@ Cron（prod）/ 手動トリガー（dev・st）
 - **多層防御（docs/08）**: cron 対象は `status='active' AND robots_status='allowed' AND terms_checked_at IS NOT NULL` のみ。`ingestTheater` 冒頭でも同条件を再検証し（`assertComplianceGate`）、cron 実行時は Queue 消費時点で `status` が変わっていないか（停止依頼等）も確認する。
 - 詳細仕様: `docs/06_extraction-spec.md`、書込アクセス層: `docs/11_d1-implementation.md` §4、コンプラ: `docs/08_compliance-policy.md` §2。
 
+## ログ・観測性（Workers Logs）
+
+全ステージが構造化ログ（`src/log.ts`: `console.log/error` に `{event, ...fields}` の単一オブジェクトを渡す）を出力し、**Workers Logs**（`wrangler.toml` の `[observability]`。3環境とも有効・サンプリング100%・保持は Workers Paid で7日）でフィールド検索できる。ログの見方・調査手順は `docs/16` §6。
+
+**イベント台帳（正本）**:
+
+| event | 発火箇所 | 主フィールド |
+|---|---|---|
+| `queue.ingest.start` / `.done` / `.retry` | queue consumer（index.ts） | theaterId, runId, trigger, attempt, status, delaySeconds |
+| `queue.reextract.start` / `.done` | 〃 | sourceRunId, runId, status |
+| `queue.invalid_message` / `queue.error` | 〃 | keys / error（恒久的失敗の ack 打ち切り） |
+| `cron.dispatch.done` | scheduled（index.ts） | theaters |
+| `run.start` | pipeline / reextract | runId, theaterId, trigger, businessDate, fetchMethod, extractMethod, sourceRunId・inputChars・images（再抽出） |
+| `run.fetch.ok` / `.fail` | pipeline | runId, ms, htmlChars, images |
+| `run.snapshot.saved` | pipeline | runId, prefix, images |
+| `run.extract.ok` / `.fail` | pipeline / reextract | runId, ms, model, inTokens, outTokens, screenings |
+| `run.validate.ng` | 〃 | runId, code, detail |
+| `run.done` | 〃（**全終端で必ず1回**） | runId, theaterId, status, extracted, written, error |
+| `llm.call.ok` / `.fail` | llm/gemini.ts・ollama.ts | provider, model, ms, **kind（timeout / http / network）**, status, inTokens, outTokens, rawChars |
+| `llm.retry` / `llm.giveup` | worker/extract.ts | kind（api / parse / schema）, 残リトライ数, apiFailures, malformedFailures |
+| `admin.enqueue.ingest` / `.reextract`・`admin.ingest.sync`・`admin.theater.status`・`admin.review.approve` / `.reject`・`admin.matrix.rebuild` | admin/index.tsx（書込み系アクションのみ。閲覧はログしない） | theaterId, sourceRunId, force, from/to, reviewId, written |
+| `reap.done` | /admin ダッシュボード読込時 | count, runIds（孤児 run 掃除の記録） |
+| `matrix.pair.fail` / `.empty`・`matrix.done` | cron/travel-matrix.ts | pair, kind, status / theaters, pairs, updated, carried, missing, ms |
+| `slack.fail` | worker/notify.ts | status（通知失敗の可視化。本処理は止めない） |
+| `http.error` | Hono onError（index.ts） | method, path, error |
+
+- 調査の起点: `event="run.done"` で結果一覧 → 気になる `runId` でフィルタ → 1回の取込の全行程を時系列で読む。
+- LLM 失敗は分類済み（`llm.call.fail` の kind と、D1 `error_message` の分類済み文言）。**429=レート制限・timeout=応答なしハング** を error_message 単体で判別できる。
+- **ガードレール**: シークレット・HTML/プロンプト/LLM生出力の本文はログに載せない（サイズのみ。本文は R2 スナップショットと reviews.payload_json が正）。エラー断片は500字上限。
+
 ## ディレクトリ構成
 
 ```
 src/
 ├── index.ts              # Worker エントリ（Hono）: /healthz・/admin 配下 / scheduled(cron dispatch) / queue consumer
 ├── env.ts                # Env（bindings + vars/secret。ADMIN_TOKEN 含む）
+├── log.ts                # 構造化ログ（logInfo/logError。イベント台帳は本 README 上記）
 ├── llm/                  # 抽出クライアント抽象化（provider × 方式。ADR-0011/0012）
 │   ├── types.ts          #   ExtractInput{text?|images?} / LlmResult / LlmClient
 │   ├── gemini.ts         #   Gemini generateContent（responseSchema・inline 画像）

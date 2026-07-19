@@ -3,6 +3,7 @@ import { completeRun, createIngestRun, failRun, updateRunStatus } from '../db/in
 import { createReview, recentAvgCount } from '../db/reviews'
 import { getTheater } from '../db/theaters'
 import type { Env } from '../env'
+import { logError, logInfo } from '../log'
 import { assertComplianceGate } from './compliance-guard'
 import { TheaterNotFoundError } from './errors'
 import { extractTextWithRetries, extractVisionWithRetries } from './extract'
@@ -45,10 +46,19 @@ export async function ingestTheater(
   const businessDate = todayJst()
   const businessMonth = businessDate.slice(0, 7)
   const runId = await createIngestRun(env.DB, { theaterId, businessDate, trigger })
+  logInfo('run.start', {
+    runId,
+    theaterId,
+    trigger,
+    businessDate,
+    fetchMethod: theater.fetchMethod,
+    extractMethod: theater.extractMethod,
+  })
 
   // 1. Fetch（static=HTTP / rendered=Browser Rendering。docs/06 §2.0）。
   //    失敗時は Queue の再配信に委ねる（Worker 側で意図的な再取得はしない）。
   //    Slack 通知は最終試行（attempt>=3）でのみ行う（毎回通知しない。docs/06 §7）。
+  const fetchStartedAt = Date.now()
   let fetched: Awaited<ReturnType<typeof fetchSchedule>>
   try {
     fetched =
@@ -59,6 +69,7 @@ export async function ingestTheater(
             extractMethod: theater.extractMethod,
           })
   } catch (e) {
+    logError('run.fetch.fail', e, { runId, theaterId, ms: Date.now() - fetchStartedAt })
     return await fail(
       env,
       runId,
@@ -72,6 +83,13 @@ export async function ingestTheater(
       },
     )
   }
+  logInfo('run.fetch.ok', {
+    runId,
+    theaterId,
+    ms: Date.now() - fetchStartedAt,
+    htmlChars: fetched.scheduleHtml.length,
+    images: fetched.images.length,
+  })
 
   // 2. R2 保存（再抽出は必ずこのスナップショットから。先方再取得はしない）
   const prefix = `raw/${theaterId}/${businessDate}/${fetched.fetchedAt}`
@@ -83,6 +101,7 @@ export async function ingestTheater(
     await env.SNAPSHOTS.put(`${prefix}_${i}.${ext}`, img.bytes)
   }
   await updateRunStatus(env.DB, runId, 'extracting')
+  logInfo('run.snapshot.saved', { runId, prefix, images: fetched.images.length })
 
   if (theater.extractMethod === 'vision' && fetched.images.length === 0) {
     return await fail(
@@ -99,6 +118,7 @@ export async function ingestTheater(
   // 3〜4. 抽出（vision=画像 / text=htmlToText 済みテキスト。P4-7）+ zod 検証。
   // LLM APIエラー/パース不能/zod NG は関数内でリトライ済み（docs/06 §7 のリトライ予算。
   // fetch 済み入力の使い回しのみで再取得はしない）。
+  const extractStartedAt = Date.now()
   let outcome: Awaited<ReturnType<typeof extractVisionWithRetries>>
   try {
     outcome =
@@ -111,6 +131,7 @@ export async function ingestTheater(
             theater.scheduleUrl,
           )
   } catch (e) {
+    logError('run.extract.fail', e, { runId, theaterId, ms: Date.now() - extractStartedAt })
     return await fail(
       env,
       runId,
@@ -122,6 +143,15 @@ export async function ingestTheater(
     )
   }
   const { ext, result } = outcome
+  logInfo('run.extract.ok', {
+    runId,
+    theaterId,
+    ms: Date.now() - extractStartedAt,
+    model: ext.model,
+    inTokens: ext.inTokens,
+    outTokens: ext.outTokens,
+    screenings: result.screenings.length,
+  })
 
   // 5. 妥当性検証 V1/2/5/6（NG はレビューキュー行き＝validation_failed）
   const avgCount = await recentAvgCount(env.DB, theaterId)
@@ -152,6 +182,13 @@ export async function ingestTheater(
     outTokens: ext.outTokens,
     promptVersion: ext.promptVersion,
   })
+  logInfo('run.done', {
+    runId,
+    theaterId,
+    status: 'succeeded',
+    extracted: result.screenings.length,
+    written,
+  })
   return {
     runId,
     status: 'succeeded',
@@ -172,6 +209,7 @@ async function fail(
   opts?: { silent?: boolean },
 ): Promise<IngestResult> {
   await failRun(env.DB, runId, { status, errorMessage: msg, snapshotKey })
+  logInfo('run.done', { runId, theaterId, status, error: msg.slice(0, 500) })
   if (!opts?.silent) {
     await sendSlack(env.SLACK_WEBHOOK_URL, `🛑 取込失敗(${status}) ${theaterName}: ${msg}`)
   }
@@ -190,6 +228,13 @@ async function toReview(
   const reason = `${ng.code}: ${ng.detail}`
   await createReview(env.DB, { runId, reason, payloadJson: JSON.stringify(result) })
   await failRun(env.DB, runId, { status: 'validation_failed', errorMessage: reason, snapshotKey })
+  logInfo('run.validate.ng', { runId, theaterId, code: ng.code, detail: ng.detail.slice(0, 500) })
+  logInfo('run.done', {
+    runId,
+    theaterId,
+    status: 'validation_failed',
+    error: reason.slice(0, 500),
+  })
   await sendSlack(env.SLACK_WEBHOOK_URL, `⚠️ 検証NG ${theaterName}: ${reason}（レビューキューへ）`)
   return { runId, status: 'validation_failed', theaterId, error: reason }
 }

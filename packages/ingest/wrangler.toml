@@ -9,6 +9,12 @@ compatibility_flags = ["nodejs_compat"]
 [browser]
 binding = "BROWSER"
 
+# Workers Logs（feat/ingest-observability・docs/14 §3.2・docs/16 §6）。
+# 構造化ログ（src/log.ts。イベント台帳は README）を保存・検索可能にする。
+# サンプリング100%（既定）・保持は Workers Paid で7日。
+[observability]
+enabled = true
+
 # --- 既定（local）---
 [[d1_databases]]
 binding = "DB"
@@ -50,6 +56,10 @@ APP_ENV = "st"
 # 抽出プロバイダを明示（ADR-0011: 本番/ST は Gemini 無料枠）。GEMINI_API_KEY は secret。
 LLM_PROVIDER = "gemini"
 
+# Workers Logs（環境ごとに明示。既定セクションからは継承されない）
+[env.st.observability]
+enabled = true
+
 [[env.st.d1_databases]]
 binding = "DB"
 database_name = "cinema_hashigo_st"
@@ -86,6 +96,10 @@ name = "cinema-ingest-prod"
 APP_ENV = "prod"
 # 抽出プロバイダを明示（ADR-0011: 本番/ST は Gemini 無料枠）。GEMINI_API_KEY は secret。
 LLM_PROVIDER = "gemini"
+
+# Workers Logs（環境ごとに明示。既定セクションからは継承されない）
+[env.prod.observability]
+enabled = true
 
 [[env.prod.d1_databases]]
 binding = "DB"

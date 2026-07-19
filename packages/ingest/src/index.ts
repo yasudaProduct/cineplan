@@ -4,6 +4,7 @@ import { adminApp } from './admin'
 import { buildTravelMatrix } from './cron/travel-matrix'
 import { listActiveTheaters } from './db/theaters'
 import type { Env } from './env'
+import { logError, logInfo } from './log'
 import { sendSlack } from './worker/notify'
 import { FETCH_FAILED_NOTIFY_AT_ATTEMPT, ingestTheater } from './worker/pipeline'
 import { reextractFromSnapshot } from './worker/reextract'
@@ -28,7 +29,7 @@ export type { Env }
 const app = new Hono<{ Bindings: Env }>()
 
 app.onError((err, c) => {
-  console.error('ingest error', err)
+  logError('http.error', err, { method: c.req.method, path: c.req.path })
   return c.text('internal error', 500)
 })
 
@@ -60,6 +61,7 @@ export default {
     for (const t of theaters) {
       await env.INGEST_QUEUE.send({ theaterId: t.id, trigger: 'cron' })
     }
+    logInfo('cron.dispatch.done', { theaters: theaters.length })
   },
 
   // Queue consumer: 1劇場1ジョブの取込パイプライン + R2再抽出。
@@ -76,14 +78,29 @@ export default {
       const body = msg.body as Partial<IngestQueueMessage>
       try {
         if ('reextractRunId' in body && body.reextractRunId) {
-          await reextractFromSnapshot(env, body.reextractRunId)
+          logInfo('queue.reextract.start', {
+            sourceRunId: body.reextractRunId,
+            attempt: msg.attempts,
+          })
+          const r = await reextractFromSnapshot(env, body.reextractRunId)
+          logInfo('queue.reextract.done', {
+            sourceRunId: body.reextractRunId,
+            runId: r.runId,
+            status: r.status,
+          })
           msg.ack()
           continue
         }
         if (!('theaterId' in body) || !body.theaterId) {
+          logInfo('queue.invalid_message', { keys: Object.keys(body) })
           msg.ack()
           continue
         }
+        logInfo('queue.ingest.start', {
+          theaterId: body.theaterId,
+          trigger: body.trigger ?? 'cron',
+          attempt: msg.attempts,
+        })
         const result = await ingestTheater(
           env,
           body.theaterId,
@@ -92,14 +109,29 @@ export default {
         )
         if (result.status === 'fetch_failed' && msg.attempts < FETCH_FAILED_NOTIFY_AT_ATTEMPT) {
           const delaySeconds = RETRY_BASE_DELAY_SECONDS * 2 ** (msg.attempts - 1) // 5分・10分…
+          logInfo('queue.ingest.retry', {
+            theaterId: body.theaterId,
+            runId: result.runId,
+            attempt: msg.attempts,
+            delaySeconds,
+          })
           msg.retry({ delaySeconds })
         } else {
+          logInfo('queue.ingest.done', {
+            theaterId: body.theaterId,
+            runId: result.runId,
+            status: result.status,
+          })
           msg.ack()
         }
       } catch (e) {
         // TheaterNotFoundError / ComplianceGateError / SnapshotNotFoundError 等の
         // 恒久的失敗はリトライしない
-        console.error('ingest queue error', e)
+        logError('queue.error', e, {
+          theaterId: 'theaterId' in body ? body.theaterId : undefined,
+          reextractRunId: 'reextractRunId' in body ? body.reextractRunId : undefined,
+          attempt: msg.attempts,
+        })
         msg.ack()
       }
     }
