@@ -23,6 +23,7 @@ Claude Code は、ここに記録された決定（特に内部利用限定・�
 | 0013 | Web を React Router v8（旧 Remix）+ Workers で実装（Next.js/Pages 想定を変更） | Accepted |
 | 0014 | 移動時間の解決に ls8h Transit API（無料・非公式）を採用（0005 の行列生成手段を確定） | Accepted |
 | 0015 | 管理サイトに抽出検証用の上映データ表示を追加（0002 のスコープ明確化） | Accepted |
+| 0016 | ST 自動デプロイ契機を `main` push から `develop` push に変更（0010 の訂正） | Accepted |
 
 ## テンプレート（新規追加時にコピー）
 

@@ -66,7 +66,7 @@ compose.yaml
 ## 環境（3つ・詳細は docs/14）
 
 - **local**: wrangler dev（D1=SQLite）+ Docker Compose の補助スタブ。`.dev.vars` で秘密。
-- **st**: クラウド動作確認。`main` push で Actions が自動デプロイ。Cron は原則OFF。
+- **st**: クラウド動作確認。`develop` push で Actions が自動デプロイ（ADR-0016）。Cron は原則OFF。
 - **prod**: 本番。`v*` タグ + 承認ゲートでデプロイ。
 - st/prod の Cloudflare リソースは完全分離。IDを取り違えない。
 
@@ -103,7 +103,7 @@ curl -X POST http://localhost:8787/admin/travel-matrix/rebuild
 curl -X POST http://localhost:8788/v1/plan -H 'content-type: application/json' \
   -d '{"date":"2026-07-15","timeWindow":{"start":"09:00","end":"22:00"},"origin":{"type":"station","value":"九条"}}'
 
-# デプロイ（通常は GitHub Actions。ST=main push / prod=v* タグ+承認。手動時のみ↓）
+# デプロイ（通常は GitHub Actions。ST=develop push / prod=v* タグ+承認。手動時のみ↓）
 pnpm -F @cinema/api exec wrangler deploy --env st
 ```
 
