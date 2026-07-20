@@ -53,6 +53,7 @@ export function Layout(props: { title: string; active: string; env: string; chil
     ['/admin/theaters', '劇場マスタ', 'theaters'],
     ['/admin/runs', '取込履歴', 'runs'],
     ['/admin/reviews', 'レビュー', 'reviews'],
+    ['/admin/screenings', '上映データ', 'screenings'],
   ] as const
   return (
     <html lang="ja">

@@ -97,3 +97,67 @@ export async function replaceScreeningsByDate(
   await db.batch(stmts) // coverage 範囲全体を1トランザクションで洗い替え（アトミック）
   return total
 }
+
+// ---- 管理サイトの抽出検証用読取（ADR-0015。docs/07 §2.6）----
+// 利用者向け・公開 API には出さない（docs/08 §1 原則1 注記）。
+
+export interface ScreeningDateCount {
+  business_date: string
+  count: number
+}
+
+// データが存在する business_date と件数（日付昇順）
+export async function listScreeningDates(
+  db: D1Database,
+  theaterId: string,
+): Promise<ScreeningDateCount[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT business_date, COUNT(*) AS count FROM screenings
+        WHERE theater_id = ? GROUP BY business_date ORDER BY business_date`,
+    )
+    .bind(theaterId)
+    .all<ScreeningDateCount>()
+  return results
+}
+
+export interface ScreeningListRow {
+  start_at: string
+  end_at: string
+  end_at_source: string
+  format: string | null
+  screen_name: string
+  detail_url: string | null
+  ingest_run_id: string
+  created_at: string
+  movie_title: string
+  runtime_min: number | null
+}
+
+// 劇場×日付の screenings（作品名 join・開始時刻順）
+export async function listScreeningsForDate(
+  db: D1Database,
+  theaterId: string,
+  businessDate: string,
+): Promise<ScreeningListRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT s.start_at, s.end_at, s.end_at_source, s.format, s.screen_name,
+              s.detail_url, s.ingest_run_id, s.created_at,
+              m.title AS movie_title, m.runtime_min
+         FROM screenings s JOIN movies m ON m.id = s.movie_id
+        WHERE s.theater_id = ? AND s.business_date = ?
+        ORDER BY s.start_at, s.screen_name`,
+    )
+    .bind(theaterId, businessDate)
+    .all<ScreeningListRow>()
+  return results
+}
+
+// 既定表示日: 今日(JST) → なければ直近の未来日 → なければ最新の過去日（docs/07 §2.6）
+export function pickDefaultDate(dates: string[], today: string): string | null {
+  if (dates.length === 0) return null
+  if (dates.includes(today)) return today
+  const sorted = [...dates].sort()
+  return sorted.find((d) => d > today) ?? sorted[sorted.length - 1]
+}

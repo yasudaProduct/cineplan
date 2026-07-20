@@ -1,6 +1,6 @@
 import type { NormalizedScreening } from '@cinema/shared'
 import { describe, expect, it } from 'vitest'
-import { replaceScreeningsByDate } from '../screenings'
+import { pickDefaultDate, replaceScreeningsByDate } from '../screenings'
 
 // D1Database の最小フェイク。prepare().bind() で捕捉した stmt を batch() 実行時に
 // インメモリ行に対して適用する（DELETE/INSERT のみ対応）。
@@ -116,5 +116,24 @@ describe('replaceScreeningsByDate — stale データ防止（review指摘#3の�
     ]
     const written = await replaceScreeningsByDate(db, 'thr_a', 'run_1', rows, '2026-07-10')
     expect(written).toBe(3)
+  })
+})
+
+describe('pickDefaultDate — 上映データ画面の既定表示日（docs/07 §2.6）', () => {
+  it('今日のデータがあれば今日', () => {
+    expect(pickDefaultDate(['2026-07-19', '2026-07-20', '2026-07-21'], '2026-07-20')).toBe(
+      '2026-07-20',
+    )
+  })
+  it('今日が無ければ直近の未来日（入力順に依存しない）', () => {
+    expect(pickDefaultDate(['2026-07-23', '2026-07-18', '2026-07-22'], '2026-07-20')).toBe(
+      '2026-07-22',
+    )
+  })
+  it('未来日が無ければ最新の過去日', () => {
+    expect(pickDefaultDate(['2026-07-15', '2026-07-18'], '2026-07-20')).toBe('2026-07-18')
+  })
+  it('データが無ければ null', () => {
+    expect(pickDefaultDate([], '2026-07-20')).toBeNull()
   })
 })

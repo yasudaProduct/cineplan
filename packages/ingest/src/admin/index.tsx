@@ -16,6 +16,7 @@ import {
   ReviewNotPendingError,
   rejectReview,
 } from '../db/reviews'
+import { listScreeningDates, listScreeningsForDate, pickDefaultDate } from '../db/screenings'
 import {
   createTheater,
   getTheater,
@@ -33,6 +34,7 @@ import { adminGuard } from './guard'
 import { DashboardPage } from './pages/dashboard'
 import { ReviewDetailPage, ReviewListPage } from './pages/reviews'
 import { RunDetailPage, RunListPage } from './pages/runs'
+import { ScreeningsPage } from './pages/screenings'
 import { TheaterEditPage, TheaterListPage, TheaterNewPage } from './pages/theaters'
 
 // 管理サイト（docs/07 §2）。エッジの Cloudflare Access（P4-1）+ コード側 adminGuard の多層。
@@ -362,6 +364,28 @@ adminApp.post('/reviews/:id/reject', async (c) => {
   return ok
     ? c.redirect(`/admin/reviews/${id}?msg=${encodeURIComponent('破棄しました')}`)
     : c.redirect(`/admin/reviews/${id}?err=${encodeURIComponent('pending ではありません')}`)
+})
+
+// ---- 上映データ（抽出検証・ADR-0015。docs/07 §2.6）----
+// 取込済み screenings の検証閲覧。D1 読取のみで先方サイトへのアクセスは無い。
+// 利用者向けに出さない・JSON API 化しない（docs/08 §1 原則1 注記の条件）。
+adminApp.get('/screenings', async (c) => {
+  const theaters = await listAllTheaters(c.env.DB)
+  const qid = c.req.query('theaterId')
+  const theater = theaters.find((t) => t.id === qid) ?? theaters[0]
+  const dates = theater ? await listScreeningDates(c.env.DB, theater.id) : []
+  const date =
+    c.req.query('date') ??
+    pickDefaultDate(
+      dates.map((d) => d.business_date),
+      todayJst(),
+    )
+  const rows = theater && date ? await listScreeningsForDate(c.env.DB, theater.id, date) : []
+  return c.html(
+    <Layout title="上映データ" active="screenings" env={env(c)}>
+      <ScreeningsPage theaters={theaters} theater={theater} dates={dates} date={date} rows={rows} />
+    </Layout>,
+  )
 })
 
 // ---- R2 スナップショット配信（レビュー突合・詳細表示用）----
