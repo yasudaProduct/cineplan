@@ -74,6 +74,7 @@ LP (/)
 - 各 Plan は PlanLabel をタブ表示。タブ切替はクライアント内（再リクエストなし）。
 - ScreeningLeg の公式リンクは必ず表示（F-07。予約導線は公式のみ、の UI 上の実装）。
 - endTime が 23:00 以降の場合「⚠ 終電にご注意」バッジ（05_routing-algorithm.md §5）。
+- 移動時間・経路は目安である旨は全ページ共通の免責フッターで掲示（08 §5・ADR-0014）。
 - Google カレンダー登録: 上映ごとに render URL を生成しリスト表示（一括は .ics を案内）。
 
 ### 1.5 共有ページ (/p/{planId})
@@ -95,7 +96,8 @@ LP (/)
 ダッシュボード (/admin)
  ├→ 劇場マスタ (/admin/theaters) → 劇場編集 (/admin/theaters/{id})
  ├→ 取込履歴 (/admin/runs) → 実行詳細 (/admin/runs/{id})
- └→ レビューキュー (/admin/reviews) → レビュー詳細 (/admin/reviews/{id})
+ ├→ レビューキュー (/admin/reviews) → レビュー詳細 (/admin/reviews/{id})
+ └→ 上映データ (/admin/screenings — 抽出検証・ADR-0015)
 ```
 
 ### 2.2 ダッシュボード
@@ -112,15 +114,15 @@ LP (/)
 
 - 一覧: name / status / fetch_method / 直近取込結果 / terms_checked_at（期限超過は警告色）。
 - 編集フォーム: theaters テーブル全項目 + 操作ボタン:
-  - [手動取込を実行]（F-33。対象日を選択して Queues 投入）
-  - [robots.txt を確認]（対象サイトの robots.txt を表示するだけの補助機能）
-  - status 変更（active/paused/retired）
+  - [手動取込を実行]（F-33。**Queue に `trigger='manual'` で投入し cron と同じ経路で非同期処理**（ブラウザの接続断で処理が中断されないための修正。06 §7）。押下直後は「投入しました」の確認メッセージのみ表示し、結果は直近取込一覧を更新して確認する。対象日選択なし: 月間画像の vision 取込（ADR-0012）は fetch 当日を起点に画像内の全日程を取り込むため対象日指定が意味を持たない。同一サイト1日1回（08 §3）を UI 側でも守るため、当日取得済みなら明示チェックで人間判断を要求。prod は cron のみ＝ボタン無効）
+  - [robots.txt を確認]（対象サイトの robots.txt へのリンク表示のみの補助機能。取得代行はしない）
+  - status 変更（active/paused/retired。**active 昇格は robots_status='allowed' かつ terms_checked_at 記入済みでないとサーバ側で拒否**（08 §0 ルール5）。直近 run の連続 succeeded 数を参考表示し、3日連続成功（06 §9）の判断は人間に委ねる）
 - 新規登録フロー: 登録時は必ず `paused` で作成 → 手動取込 → レビュー全件目視 → 3日連続成功で active 化（06_extraction-spec.md §9 の受入手順を UI で担保）。
 
 ### 2.4 取込履歴
 
 - 一覧: 日時 / 劇場 / status / 件数 / トークン / 所要時間。フィルタ: 劇場・status・期間。
-- 詳細: ingest_runs 全項目 + [R2 スナップショットを表示] + [このスナップショットで再抽出]（再取得なしの再実行、F-21）。
+- 詳細: ingest_runs 全項目 + [R2 スナップショットを表示] + [このスナップショットで再抽出]（再取得なしの再実行、F-21。**Queue に `{reextractRunId}` で投入し非同期処理**（06 §7。ブラウザの接続断で処理が中断されないための修正）。押下直後は「投入しました」の確認メッセージのみ表示し、結果は劇場詳細の直近取込一覧を更新して確認する）。
 
 ### 2.5 レビューキュー
 
@@ -130,8 +132,16 @@ LP (/)
   - [破棄]（rejected。理由メモ必須）
   - [プロンプト再実行]（最新プロンプトバージョンで再抽出）
 
+### 2.6 上映データ（抽出検証・ADR-0015）
+
+- 目的: 取込済み screenings の抽出品質検証・障害調査（公式サイトとの目視突合）。**利用者向け機能ではない**（08 §1 原則1 注記）。D1 読取のみで先方サイトへのアクセスは発生しない。
+- 劇場セレクタ + 日付リンク（データがある business_date と件数）。既定日付: 今日(JST) → なければ直近の未来日 → なければ最新の過去日。
+- テーブル: 開始/終了(JST・推定終了はバッジ) / 作品（runtime 併記） / 形式 / スクリーン / 公式 detail_url / 取込 run へのリンク + 取得日時。
+- 突合用に当該劇場の schedule_url への外部リンクを表示。画面に検証目的である旨を明記。
+- 制約（ADR-0015）: 管理サイト配下のみ・SSR 画面のみ（JSON API 化しない）・エクスポート/共有機能を付けない。
+
 ## 3. 実装メモ
 
 - 管理サイトは ingest パッケージ内に Hono + JSX（SSR のみ、クライアント JS 最小）で同居。凝った SPA にしない。
-- Web は React 系（Next.js on Cloudflare / Remix）。API クライアントと zod 型は packages/shared から import し、モバイルアプリ（Expo）に将来流用する。
+- Web は React 系。**React Router v8（旧 Remix）+ Cloudflare Workers で確定**（ADR-0013・P3-1）。API クライアントと zod 型は packages/shared から import し、モバイルアプリ（Expo）に将来流用する。
 - アイコン・絵文字は本ワイヤー中の記号は意味の指示であり、実装ではアイコンフォント等に置換してよい。

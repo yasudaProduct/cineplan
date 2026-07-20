@@ -37,4 +37,8 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      # web（Pages）は P3-1 で Pages 用デプロイステップを追加する。
+      - name: deploy web (st)
+        run: pnpm -F @cinema/web run deploy:st # CLOUDFLARE_ENV=st でビルド → wrangler deploy（ADR-0013）
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

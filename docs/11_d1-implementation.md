@@ -112,6 +112,32 @@ CREATE TABLE shared_plans (
 CREATE INDEX idx_shared_plans_expiry ON shared_plans (expires_at);
 ```
 
+### 0002_add_extract_method.sql（ADR-0012）
+
+劇場ごとの抽出方式 `extract_method`（`text` | `vision`）を追加。SQLite の ALTER ADD COLUMN は単一列 CHECK を許容する。既定は後方互換で `text`。
+
+```sql
+ALTER TABLE theaters
+  ADD COLUMN extract_method TEXT NOT NULL DEFAULT 'text'
+  CHECK (extract_method IN ('text','vision'));
+```
+
+### 0003_screenings_screen_name.sql（多スクリーン対応）
+
+多スクリーン館（cinenouveau は2スクリーン）は同一作品・同時刻を別スクリーンで上映しうる。screenings に `screen_name` を追加し、一意性をスクリーン込みにする。SQLite は UNIQUE 変更にテーブル再作成が要るが、screenings は洗い替えで再生成されるため DROP→CREATE で作り直す（前方のみ）。
+
+```sql
+DROP INDEX IF EXISTS idx_screenings_lookup;
+DROP INDEX IF EXISTS idx_screenings_movie;
+DROP TABLE screenings;
+CREATE TABLE screenings (
+  ... (03 §3.3 の定義 + screen_name TEXT NOT NULL DEFAULT '') ...
+  UNIQUE (theater_id, business_date, movie_id, start_at, screen_name)
+);
+CREATE INDEX idx_screenings_lookup ON screenings (business_date, theater_id, start_at);
+CREATE INDEX idx_screenings_movie ON screenings (business_date, movie_id);
+```
+
 ### seeds/dev_seed.sql（ローカル専用・マイグレーションではない）
 
 マイグレーション列に入れず、ローカルでのみ次で投入する（ST/prod には流さない）:
@@ -121,15 +147,18 @@ pnpm -F @cinema/api exec wrangler d1 execute cinema_hashigo --local \
   --persist-to ../../.wrangler-state --file ../../seeds/dev_seed.sql
 ```
 
+P1 の取込対象 1館目（シネ・ヌーヴォ）を `paused`・`extract_method=vision` で投入する。受入プロセス（docs/16 §2.2）を経て人間が active 昇格するまで公開 API には出さない。
+
 ```sql
 INSERT INTO theaters (id,name,short_name,status,lat,lng,nearest_station,
-  walk_min_from_sta,schedule_url,fetch_method,official_url,
+  walk_min_from_sta,schedule_url,fetch_method,extract_method,official_url,
   terms_note,terms_checked_at,robots_status)
 VALUES
-('thr_dev01','開発用劇場A','劇場A','active',34.7025,135.4959,'大阪',
-  5,'https://example.com/theater-a/schedule?date={date}','static',
-  'https://example.com/theater-a',
-  'robots.txt allow確認済/規約にスクレイピング禁止記載なし','2026-07-07T00:00:00Z','allowed');
+('thr_cnv01','シネ・ヌーヴォ','シネ・ヌーヴォ','paused',34.6692,135.4781,'九条',
+  5,'http://www.cinenouveau.com/schedule/schedule1.html','static','vision',
+  'http://www.cinenouveau.com/',
+  'robots.txt無し(許容)/規約にスクレイピング禁止記載なし/アグリゲーター非経由/画像(GIF)をvision抽出。2026-07-10確認',
+  '2026-07-10T00:00:00Z','allowed');
 ```
 
 ## 2. ID 生成
@@ -325,14 +354,29 @@ FROM theaters WHERE status = 'active' ORDER BY name;
 
 `/plan` で対象日データがあるかを先に判定し、`no_screenings`(0件) と `DATA_NOT_READY`(未取込) を区別する。
 
+月間画像の vision 取込（ADR-0012）では 1 回の取込が複数 businessDate を書き込む一方、`ingest_runs.business_date` は実行日である。したがって ready 判定は「対象日の screenings が存在する **or** 対象日を business_date とする succeeded run が存在する」とする（前者が月間取込を、後者が日次取込・休館日 0 件を拾う）。
+
+**いずれの判定も `theaters.status='active'` の劇場に限定する。** `/plan` の候補ロード・origin 解決（§5.1・planner）は active 劇場のみを対象にするため、ready 判定だけが paused 劇場のデータを拾うと不整合になる（採用プロセス中の paused 劇場を手動取込した ST 等で、ready=true なのに active 劇場が 0 件 → origin 解決不能の 400 になる。P4-0 で検出）。active 劇場に限定すれば、そのようなケースは 422 DATA_NOT_READY で明快に返る。
+
 ```ts
-// 「その日の ingest_run が1件も succeeded でない」= 未取込 → 422
-const ready = await db.prepare(
-  `SELECT 1 FROM ingest_runs
-    WHERE business_date=?1 AND status='succeeded' LIMIT 1`
-).bind(businessDate).first();
-if (!ready) throw new ApiError(422, 'DATA_NOT_READY');
+// active 劇場について、対象日の screenings が1件も無く succeeded run も無い = 未取込 → 422
+export async function isDataReady(db: D1Database, businessDate: string): Promise<boolean> {
+  const scr = await db.prepare(
+    `SELECT 1 FROM screenings s
+       JOIN theaters t ON t.id = s.theater_id
+      WHERE s.business_date=?1 AND t.status='active' LIMIT 1`
+  ).bind(businessDate).first();
+  if (scr) return true;
+  const run = await db.prepare(
+    `SELECT 1 FROM ingest_runs r
+       JOIN theaters t ON t.id = r.theater_id
+      WHERE r.business_date=?1 AND r.status='succeeded' AND t.status='active' LIMIT 1`
+  ).bind(businessDate).first();
+  return run !== null;
+}
 ```
+
+- 既知の限界: 月間取込の対象月内で「休館日等により 0 件」の日は 422 になる（本来は no_screenings が正しい）。運用上まれで実害が小さいため P2 では許容し、必要になったら run にカバー範囲（from/to）を持たせて解消する。
 
 ## 6. レビュー承認の反映
 

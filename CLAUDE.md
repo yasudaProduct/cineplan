@@ -10,7 +10,7 @@ Claude Code はこのプロジェクトで作業する前に本ファイルを�
 
 以下は `docs/08_compliance-policy.md` §0 の再掲。パフォーマンスや利便性を理由に自己判断で破らない。破りたくなったら実装せず人間に確認する。
 
-1. 取得した上映スケジュールは**ルート算出の入力にのみ使う**。劇場×日付の上映一覧を返す API・画面を作らない。
+1. 取得した上映スケジュールは**ルート算出の入力にのみ使う**。劇場×日付の上映一覧を返す API・画面を作らない（利用者向け・公開面が対象。管理サイト内の抽出検証表示のみ ADR-0015 の条件で許容）。
 2. 予約・決済機能を作らない。予約は各劇場の公式ページへ誘導する。
 3. 同一サイトへのアクセスは**5秒以上間隔・1劇場1日1回**。並列化で実質頻度を上げない。
 4. 抽出の再処理は R2 スナップショットから行う。先方サイトへの再取得は fetch 失敗時のみ。
@@ -78,10 +78,10 @@ pnpm install
 # ローカル補助サービス（必要分のみ選択起動）
 docker compose up -d transit-stub slack-stub   # minio は任意
 
-# 開発サーバ（wrangler dev。--persist-to で local D1/R2/KV を全パッケージ共有）
-pnpm -F @cinema/api dev
-pnpm -F @cinema/ingest dev
-# @cinema/web は P3-1 で Next.js 初期化後に dev を追加
+# 開発サーバ
+pnpm -F @cinema/api dev        # :8788（wrangler dev。--persist-to で local D1/R2/KV を全パッケージ共有）
+pnpm -F @cinema/ingest dev     # :8787（同上）
+pnpm -F @cinema/web dev        # :5173（React Router v8 + Vite。ADR-0013。ブラウザから :8788 の API に fetch）
 
 # 検証（CI と同一）
 pnpm typecheck
@@ -92,11 +92,23 @@ pnpm test            # vitest。DP 期待値（P2-3）含む
 pnpm -F @cinema/api exec wrangler d1 migrations apply cinema_hashigo --local --persist-to ../../.wrangler-state
 pnpm -F @cinema/api exec wrangler d1 execute cinema_hashigo --local --persist-to ../../.wrangler-state --file ../../seeds/dev_seed.sql
 
+# 手動取込（P1。ingest dev 起動中に。prod は cron のみ）
+#   事前に packages/ingest/.dev.vars を用意（LLM_PROVIDER 等。vision は Ollama ビジョンモデル or Gemini）
+curl -X POST "http://localhost:8787/admin/ingest?theaterId=thr_cnv01"
+# 管理サイト（P4-2〜5。ダッシュボード/劇場マスタ/取込履歴/レビュー）はブラウザで http://localhost:8787/admin
+# TravelMatrix 再生成（P4-6。ls8h Transit API・ADR-0014。ダッシュボードのボタン or ↓）
+curl -X POST http://localhost:8787/admin/travel-matrix/rebuild
+
+# ルート算出の手動確認（P2。api dev 起動中に。データは取込済みの日付で）
+curl -X POST http://localhost:8788/v1/plan -H 'content-type: application/json' \
+  -d '{"date":"2026-07-15","timeWindow":{"start":"09:00","end":"22:00"},"origin":{"type":"station","value":"九条"}}'
+
 # デプロイ（通常は GitHub Actions。ST=main push / prod=v* タグ+承認。手動時のみ↓）
 pnpm -F @cinema/api exec wrangler deploy --env st
 ```
 
 - リンタは Biome（`biome.json`）、テストは Vitest（`vitest.config.ts`）、型は各パッケージ `tsc --noEmit`。
+- シークレット/vars は各 Worker 直下の `.dev.vars`（`packages/{api,ingest}/.dev.vars`。gitignore）。ingest は LLM/Slack を使うため要設定。
 - ST/prod の実 D1/KV/R2/Queue ID は未採番（`wrangler.toml` は `REPLACE_WITH_*` プレースホルダ）。採番と反映は P4-0（ST）/ P5-7（prod）。手順は `docs/16_human-setup-guide.md` §3・§5。
 
 ## コーディング方針（軽量）

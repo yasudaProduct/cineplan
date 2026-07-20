@@ -42,6 +42,7 @@ CREATE TABLE theaters (
   -- 取込設定
   schedule_url      TEXT NOT NULL,                -- 取得対象 URL（日付はテンプレート可: {date}）
   fetch_method      TEXT NOT NULL DEFAULT 'static', -- static | rendered
+  extract_method    TEXT NOT NULL DEFAULT 'text',  -- text | vision（ADR-0012。migration 0002）
   official_url      TEXT NOT NULL,                -- 利用者誘導先（予約はこちら）
   -- コンプライアンス記録（F-24）
   terms_note        TEXT,                         -- 規約確認メモ
@@ -72,10 +73,12 @@ CREATE TABLE screenings (
   end_at         TEXT NOT NULL,                   -- 不明時は start_at + movies.runtime_min + 10分(予告)
   end_at_source  TEXT NOT NULL DEFAULT 'site',    -- site | estimated
   format         TEXT,                            -- 2D | IMAX | 4DX | SUB | DUB 等（複合は "IMAX,SUB"）
+  screen_name    TEXT NOT NULL DEFAULT '',         -- スクリーン名（単一館は ''）。多スクリーン一意性用（migration 0003）
   detail_url     TEXT,                            -- 該当作品の劇場公式ページ（F-07）
   ingest_run_id  TEXT NOT NULL REFERENCES ingest_runs(id),
   created_at     TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE (theater_id, business_date, movie_id, start_at)
+  -- 多スクリーン館は同一作品・同時刻を別スクリーンで上映しうるため screen_name を一意性に含める（ADR-0012 の実データで判明）
+  UNIQUE (theater_id, business_date, movie_id, start_at, screen_name)
 );
 CREATE INDEX idx_screenings_lookup ON screenings (business_date, theater_id, start_at);
 
@@ -106,6 +109,7 @@ CREATE TABLE extraction_reviews (
   status         TEXT NOT NULL DEFAULT 'pending', -- pending | approved | rejected
   reason         TEXT NOT NULL,                   -- 検証NGの理由（machine-readable コード + 詳細）
   payload_json   TEXT NOT NULL,                   -- 抽出結果全体（承認時にこれを screenings へ反映）
+  review_note    TEXT,                            -- レビュー時のメモ（破棄は必須。docs/07 §2.5。migration 0004）
   reviewed_at    TEXT,
   created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -141,20 +145,20 @@ CREATE TABLE shared_plans (
   "generatedAt": "2026-07-06T21:00:00Z",
   "unit": "minutes",
   "theaters": ["thr_a", "thr_b", ...],
-  // matrix[i][j] = theaters[i] から theaters[j] への所要分（駅→駅 + 両端徒歩）
+  // matrix[i][j] = theaters[i] から theaters[j] への所要分（劇場前→劇場前 door-to-door。欠損は null）
   "matrix": [[0, 24, ...], [26, 0, ...], ...],
   // 経路概要（UI 表示用、任意）
   "summaries": { "thr_a>thr_b": "梅田→なんば（御堂筋線）" }
 }
 ```
 
-- 生成: 週次バッチ（ingest パッケージの Cron）。駅すぱあと API で `nearest_station` 間を検索し、`walk_min_from_sta` を両端に加算。
+- 生成: 週次バッチ（ingest の prod Cron 月曜 18:00 UTC = 火曜 03:00 JST）+ 管理サイトからの手動再生成（P4-6）。ls8h Transit API（ADR-0014）の `/api/v1/plan` を劇場座標の geo→geo で引き、所要分 = `ceil((accessWalkSecs + durationSecs) / 60)`（egress 徒歩は durationSecs に含まれる）。代表時刻は**翌日 13:00**（昼間ダイヤ・実行時刻に依存しない）。`summaries` は乗車 leg の routeName を「→」連結（例「長堀鶴見緑地線→御堂筋線」）。
 - 非対称（i→j ≠ j→i）を許容する。
-- 30館で 870 要素。フリープラン枠を考慮し、差分更新（新規劇場追加時はその行・列のみ計算）を基本とする。
+- 30館で 870 要素。小規模のうちは週次フル再生成とし、**失敗ペアは前回値を温存・全滅時は KV を上書きしない**（無料 API の不調への安全弁。ADR-0014）。リクエストは直列・1秒以上間隔。差分更新はスケール時の課題として先送り。
 
 ### 5.2 station-geo
 
-- キー: `station-geo:{駅名}` → `{ lat, lng }`。origin の geo→最寄駅解決の補助キャッシュ。TTL 30日。
+- キー: `station-geo:{駅名}` → `{ lat, lng }`。origin/destination の**駅名→座標**ジオコーディングキャッシュ（ls8h `/api/v1/locations/suggest`。ADR-0014）。対応劇場の `nearest_station` に一致しない駅名はこれで座標化し、直線距離推定（05 §5）へ接続する。TTL 30日。
 
 ## 6. 名寄せ規則（movies）
 
@@ -166,5 +170,6 @@ CREATE TABLE shared_plans (
 ## 7. 整合性ルール
 
 - screenings の書込は「同一 (theater_id, business_date) を DELETE → INSERT」のトランザクションで置換する（部分更新はしない）。取込は洗い替えが正。
+- **月間画像等 1回の取込結果が複数 business_date にまたがる場合（ADR-0012）は、抽出結果に現れた日付だけでなく「今回の取込が対象とした日（today）〜抽出結果中の最大日付」までの全 business_date を洗い替え対象にする。** 抽出結果が0件の日・今回現れなかった日も含めて DELETE してから INSERT する。抽出に現れた日付だけを置換すると、休館日や上映が無くなった日の古い screenings が残り続け（stale データ）、`/plan` が実在しない上映でルートを組みうるため。抽出結果が完全に空の取込は today 1日分のみを洗い替える（実装: `packages/ingest/src/db/screenings.ts` の `replaceScreeningsByDate`）。
 - 公開 API は `theaters.status = 'active'` の劇場の screenings のみ返す。paused/retired にしても既存データは物理削除しない。
 - extraction_reviews の approve 時は、payload_json を通常の書込パスと同一の関数で反映する（反映ロジックを二重実装しない）。

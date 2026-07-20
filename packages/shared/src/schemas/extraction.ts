@@ -1,22 +1,33 @@
 import { z } from 'zod'
 
+// 時刻は「時 0〜29・分 00〜59」に制約する（docs/06 §3・§6。24時超えは 24:00〜29:59 のみ許容）。
+// 分を \d{2} のまま（00〜99許容）にすると "10:75" 等の不正時刻が regex を素通りし、
+// 正規化（normalizeStart の setHours）が silent に別時刻へ丸めてしまうため、値域を絞る。
+const TIME_RE = /^(2[0-9]|[01]?[0-9]):[0-5]\d$/
+
 // LLM 抽出の出力スキーマ（docs/06 §3）。サイト表記のまま。正規化は後段（ingest）。
+// 任意フィールドは .nullish()（null も欠落も許容）。LLM の構造化出力は空フィールドを
+// null ではなく省略(undefined)することがあるため（Gemini 実データで判明）。
 export const ExtractedScreening = z.object({
-  movieTitle: z.string().min(1),
-  startTime: z.string().regex(/^\d{1,2}:\d{2}$/), // "25:10" 等の24時超え許容
-  endTime: z
+  // 月間画像等で各行に日付が紐づく場合に補完（ADR-0012）。実効 businessDate は date ?? ExtractionResult.businessDate。
+  date: z
     .string()
-    .regex(/^\d{1,2}:\d{2}$/)
-    .nullable(), // 記載なければ null
-  format: z.string().nullable(),
-  screenName: z.string().nullable(),
-  detailPath: z.string().nullable(),
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullish(),
+  movieTitle: z.string().min(1),
+  startTime: z.string().regex(TIME_RE), // "25:10" 等の24時超え許容（時0〜29・分00〜59）
+  endTime: z.string().regex(TIME_RE).nullish(), // 記載なければ省略/null
+  format: z.string().nullish(),
+  screenName: z.string().nullish(),
+  detailPath: z.string().nullish(),
 })
 export type ExtractedScreening = z.infer<typeof ExtractedScreening>
 
 export const ExtractionResult = z.object({
-  businessDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), // ページに明示された対象日
+  businessDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), // 単日ページの対象日 / 月間画像では基準日
   screenings: z.array(ExtractedScreening),
-  notes: z.string().nullable(), // LLM が気付いた異常（"休館日と記載" 等）
+  // provider の responseSchema の required に notes を含めていないため、空のとき値自体を
+  // 省略(undefined)してくる場合がある（Gemini 実データで判明）。.nullable() だと ZodError になる。
+  notes: z.string().nullish(), // LLM が気付いた異常（"休館日と記載" 等）
 })
 export type ExtractionResult = z.infer<typeof ExtractionResult>

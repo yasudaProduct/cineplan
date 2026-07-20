@@ -1,5 +1,0 @@
-# packages/web/wrangler.toml — Cloudflare Pages 設定。
-# P0 はプレースホルダ。P3-1（Next.js on Cloudflare 初期化）で
-# pages_build_output_dir・ビルド方式・[env.st]/[env.prod] を確定する。
-name = "cinema-web"
-compatibility_date = "2026-07-01"

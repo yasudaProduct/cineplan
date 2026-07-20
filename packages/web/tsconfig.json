@@ -1,7 +1,11 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "files": [],
+  "references": [{ "path": "./tsconfig.node.json" }, { "path": "./tsconfig.cloudflare.json" }],
   "compilerOptions": {
-    "rootDir": "src"
-  },
-  "include": ["src"]
+    "checkJs": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true
+  }
 }

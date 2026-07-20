@@ -28,8 +28,8 @@
 
 | 項目 | 状態 |
 |---|---|
-| Node.js | v22.14.0 ✅ |
-| pnpm | 10.33.0 ✅ |
+| Node.js | v22.23.1（nodebrew）✅ ※P3 で v22.14→v22.23.1 に更新（React Router v8 が Node >22.22 を要求。切替は `nodebrew use`。pnpm は `corepack enable pnpm` で再有効化） |
+| pnpm | 10.33.0（corepack）✅ |
 | Docker / Compose | 20.10.24 / v2.17.2 ✅ |
 | wrangler | 4.54.0（グローバル）✅ 任意で更新: `npm i -g wrangler@latest` |
 | gh CLI | 2.86.0・`yasudaProduct` で認証済み（repo/workflow スコープあり）✅ |
@@ -97,7 +97,7 @@ wrangler r2 bucket create cinema-snapshots-st
 wrangler queues create cinema-ingest-queue-st
 ```
 
-（コマンドの正確な形は実行時に Claude Code が確認する。）出力された各 ID の wrangler.toml `[env.st]` への反映も Claude Code が行う（リソース ID は機密ではない）。
+（コマンドの正確な形は実行時に Claude Code が確認する。）出力された各 ID の wrangler.toml `[env.st]` への反映も Claude Code が行う（リソース ID は機密ではない）。反映先は api・ingest の `REPLACE_WITH_ST_D1_ID` / `REPLACE_WITH_ST_KV_ID`（D1・KV は両 Worker で同一 ID を共有。R2・Queue は名前参照のため ID 反映不要）。**web（`cinema-web-st`）はバインディング無しの Worker のため、作成するリソースは無い**（デプロイのみ）。
 
 ### 3.3 Cloudflare API トークン発行（ST 用・GitHub Actions デプロイ用）
 
@@ -108,7 +108,7 @@ wrangler queues create cinema-ingest-queue-st
    - Account / Workers KV Storage / Edit
    - Account / Workers R2 Storage / Edit
    - Account / Queues / Edit
-   - Account / Cloudflare Pages / Edit（web のデプロイ方式が Pages の場合）
+   - （web も Worker としてデプロイするため Pages 権限は不要。ADR-0013。「Workers Scripts / Edit」で api・ingest・web の3 Worker すべてを賄う）
 3. 名前 `cineplan-st-deploy` で作成し、トークン値を控える（**再表示不可**）。権限不足は deploy-st の失敗ログで判明するので、その際に追補すればよい。
 4. Account ID を控える: Workers & Pages Overview の右カラム、または `wrangler whoami`。
 
@@ -133,8 +133,12 @@ wrangler queues create cinema-ingest-queue-st
 cd packages/ingest
 wrangler secret put GEMINI_API_KEY --env st    # 実行するとプロンプトが出るので値を貼る
 wrangler secret put SLACK_WEBHOOK_URL --env st
+wrangler secret put ADMIN_TOKEN --env st       # 手動取込エンドポイント保護用。ランダム文字列で可
+                                                #   例: openssl rand -hex 32 で生成
 # EKISPERT_API_KEY は P4-6 の前でよい（§4.2）
 ```
+
+**`ADMIN_TOKEN` は Cloudflare Access（§4.1）を設定する P4-1 より前に ST を公開する場合、必ず設定する。** `POST /admin/ingest` は local（`APP_ENV=local`）以外では `x-admin-token` ヘッダの一致を要求し、未設定のまま ST にデプロイすると常に 401 を返す（fail closed）。手動取込確認時は `curl -H "x-admin-token: <値>" ...` で呼ぶ。
 
 api パッケージ側に必要なシークレットが生じた場合は Claude Code が同じ形式で案内する。
 
@@ -152,13 +156,15 @@ api パッケージ側に必要なシークレットが生じた場合は Claude
    - Policy: Allow / Include: Emails = 自分のメールアドレス
 3. ログイン方式は既定の **One-time PIN**（メールで PIN が届く）で開始してよい。Google アカウントでログインしたい場合は Settings → Authentication → Login methods → Google を追加（Google Cloud Console での OAuth クライアント作成が必要。任意）。
 4. シークレットウィンドウで `/admin` を開き、認証が要求されることを確認 →「§4.1 完了」。
+5. **Access 有効化後の注意**: `/admin` 配下は curl も Access に遮られる（302）ため、`x-admin-token` 付き curl での手動取込は ST では使えなくなる。以降の手動取込・再抽出・レビューは**管理サイト UI（P4-3〜P4-5）をブラウザで**操作する（Access ログイン後は Cloudflare がリクエストに `Cf-Access-Jwt-Assertion` を付与し、コード側ガードを通過する）。自動化が必要になったら Access の Service Token を発行して `CF-Access-Client-Id/Secret` ヘッダで呼ぶ（P4 時点では不要）。コード側の JWT 署名検証（team ドメイン・aud 検証）は未実施＝エッジの Access が一次防御（強化する場合は P5 で検討）。
 
-### 4.2 駅すぱあと Web サービス API キー（P4-6 の前。審査に日数がかかるため早めに）
+### 4.2 移動時間 API（P4-6）— 人間作業は不要になった（ADR-0014）
 
-1. https://api-info.ekispert.com/ からフリープランを申込（個人可・審査あり）。**申込前に提供条件（リクエスト上限・商用可否・無償範囲）を確認する。**
-2. キー取得後: `.dev.vars` に `EKISPERT_API_KEY=...` を追記し、§3.6 と同じ形式で `wrangler secret put EKISPERT_API_KEY --env st`。
-3. **取得できない/条件が合わない場合は Claude Code に伝える** → 代替（Google Routes API 等の他社経路 API、または手動計測行列の恒久運用）を ADR で決めてから P4-6 に着手する。
-   - フォールバック: 5〜10 館規模なら劇場間所要分を手動調査した固定行列（P2-2 の seed 方式の継続）で運用可能。行列生成の自動化はスケール時の課題に先送りできる。
+当初想定の駅すぱあと Web サービスは実質法人向けのため不採用（2026-07-13 オーナー判断）。代替として **ls8h Transit API**（`https://api.transit.ls8h.com`・無料・認証不要・非公式）を採用した（ADR-0014。利用規約はオーナーが 2026-07-13 に実査: 商用禁止条項なし・無保証・個人運営）。
+
+- **API キーの取得・シークレット投入は不要**。向き先 `TRANSIT_API_BASE` は非機密 var（既定は実 API）。
+- 劇場間行列は週次 Cron（prod）+ 管理サイトのダッシュボードから手動再生成できる。
+- 留意: 個人運営のため予告なく停止しうる。停止しても /plan は最後に生成した行列＋直線距離推定で動き続ける。長期停止時は Google Routes API 等への差し替えを ADR で再決定する（ビルダーとジオコーダの差し替えのみで済む設計）。
 
 ### 4.3 劇場 2〜5 館目の採用確認とレビュー目視（P4-8）
 
@@ -215,6 +221,19 @@ Claude Code が用意する文面（利用規約 / プライバシーポリシ�
 | 90日毎 | 管理サイトの警告に従い各劇場の robots.txt / 規約を再確認 → terms_checked_at を更新（§2.2 の手順） |
 | 随時 | 劇場からの停止依頼 → 当該劇場を即 `paused`/`retired`（`08` §3） |
 | 随時 | Google AI Studio（無料枠の消費/超過）・Cloudflare の請求額確認（N-04: 月 3,000 円以内） |
+
+### 6.1 ログの見方（Workers Logs。取込の調査手順）
+
+取込が失敗した・件数が想定と違う等の調査は、まず管理サイトの取込詳細（`error_message`。LLM 失敗は timeout / 429 等に分類済み）を見て、足りなければ Workers Logs を開く。
+
+1. Cloudflare ダッシュボード → Workers & Pages → `cinema-ingest-st`（prod は `cinema-ingest-prod`）→ **Logs**。
+2. 構造化フィールドで絞り込む（イベント台帳は `packages/ingest/README.md`）。よく使うフィルタ:
+   - `event = "run.done"` … 取込1回ごとの最終結果一覧（status / extracted / written）
+   - `runId = "run_xxxx"` … その取込の全行程（fetch → 抽出 → 書込）を時系列表示
+   - `event = "llm.call.fail"` … LLM 呼出失敗の分類（kind: timeout / http / network。http の status=429 ならレート制限）
+   - `event = "reap.done"` … 孤児 run 掃除の記録（どの run がいつ確定されたか）
+3. リアルタイム確認は手元から: `pnpm -F @cinema/ingest exec wrangler tail --env st --format pretty`
+- ログ保持は7日（Workers Paid）。それより古い調査は D1 の `ingest_runs` と R2 スナップショットが正。
 
 ## 7. ランニングコスト概算（N-04 との突合・2026-07 時点の概算）
 

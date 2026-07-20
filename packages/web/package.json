@@ -4,10 +4,31 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "build": "tsc --noEmit"
+    "dev": "react-router dev",
+    "build": "react-router build",
+    "typecheck": "wrangler types && react-router typegen && tsc -b",
+    "cf-typegen": "wrangler types",
+    "deploy:st": "CLOUDFLARE_ENV=st VITE_API_BASE=https://cinema-api-st.yuta-develop-ct.workers.dev react-router build && wrangler deploy",
+    "deploy:prod": "CLOUDFLARE_ENV=prod VITE_API_BASE=REPLACE_WITH_PROD_API_BASE react-router build && wrangler deploy"
   },
   "dependencies": {
-    "@cinema/shared": "workspace:*"
+    "@cinema/shared": "workspace:*",
+    "isbot": "^5.1.36",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-router": "8.0.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.44.0",
+    "@react-router/dev": "8.0.0",
+    "@tailwindcss/vite": "^4.2.2",
+    "@types/node": "^22",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.3",
+    "wrangler": "^4.110.0"
   }
 }

@@ -1,0 +1,24 @@
+/**
+ * web（LP + プラン作成/結果画面）。React Router v8 + Workers（ADR-0013）。
+ * デプロイは `CLOUDFLARE_ENV=st|prod react-router build && wrangler deploy`
+ * （@cloudflare/vite-plugin が env を解決した設定を build 出力に書き出す）。
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cinema-web",
+  "compatibility_date": "2026-07-01",
+  "main": "./workers/app.ts",
+  "observability": {
+    "enabled": true
+  },
+  "upload_source_maps": true,
+  "compatibility_flags": ["nodejs_compat"],
+  "env": {
+    "st": {
+      "name": "cinema-web-st"
+    },
+    "prod": {
+      "name": "cinema-web-prod"
+    }
+  }
+}

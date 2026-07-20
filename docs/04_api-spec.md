@@ -186,8 +186,8 @@ components:
           type: object
           required: [start, end]
           properties:
-            start: { type: string, pattern: "^\\d{2}:\\d{2}$", example: "09:00" }
-            end: { type: string, pattern: "^\\d{2}:\\d{2}$", example: "22:00" }
+            start: { type: string, pattern: "^([01]\\d|2[0-3]):[0-5]\\d$", example: "09:00" }
+            end: { type: string, pattern: "^([01]\\d|2[0-3]):[0-5]\\d$", example: "22:00" }
         origin: { $ref: "#/components/schemas/Location" }
         destination:
           oneOf:
@@ -294,6 +294,8 @@ components:
 
 1. **infeasible を 200 で返す理由**: 「案がない」はエラーではなく正常な算出結果であり、UI は relaxSuggestions を使って緩和 UI を出す（F-09）。
 2. **共有は POST /plans で二段階**: `/plan` 結果はステートレス。ユーザーが共有ボタンを押した Plan だけを永続化する（不要な書込を避ける）。
-3. **Googleカレンダー URL はクライアント生成**: `ScreeningLeg` の情報だけで `calendar.google.com/render?action=TEMPLATE` URL を組み立てられるため、専用エンドポイントは持たない。.ics のみサーバ生成（複数予定の一括登録のため）。
+3. **Googleカレンダー URL はクライアント生成**: `ScreeningLeg` の情報だけで `calendar.google.com/render?action=TEMPLATE` URL を組み立てられるため、専用エンドポイントは持たない。**結果画面の .ics も同様にクライアント生成**（`Plan` の legs だけで組み立てられ、共有前の Plan には ID が無いため）。`GET /plans/{planId}/ics` は**共有ページ用**（永続化済み Plan が対象。P5-1）。
 4. **キャッシュ**: `GET /theaters` は `Cache-Control: max-age=3600`。`/movies` は `max-age=600`。`POST /plan` はキャッシュしない。
 5. **エラーコード体系**: `VALIDATION_ERROR` / `DATA_NOT_READY`（422）/ `RATE_LIMITED`（429）/ `INTERNAL`（500）。
+6. **CORS**: web は別オリジン（`api.<domain>` と web ドメイン / ローカルは :5173 と :8788）からブラウザ直接 fetch するため、`/v1/*` に CORS を許可する。MVP は認証なしの公開 API のため `Access-Control-Allow-Origin: *`（全許可）。認証・宛先制限を導入する際にオリジン許可リストへ切替える。
+7. **origin/destination の station 解決**（P4-6・ADR-0014）: ①対応劇場の `nearest_station` 一致（`walk_min_from_sta`）→ ②不一致なら `station-geo`（KV 30日）経由のジオコーディングで座標化し直線距離推定 → ③それでも不明なら 400 VALIDATION_ERROR。ジオコーディングの外部呼出はキャッシュ未ヒットの初出駅名のみ。
