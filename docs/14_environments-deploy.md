@@ -9,7 +9,7 @@
 | 環境 | 用途 | 実行場所 | DB | デプロイ契機 |
 |---|---|---|---|---|
 | **local** | 日常開発・単体/結合テスト | 開発機（wrangler dev + Docker Compose） | D1 local（SQLite emulation）| なし（手元実行） |
-| **st** | クラウド上の動作確認（ステージング） | Cloudflare（本番と別アカウント資源） | D1 `cinema_hashigo_st` | `main` ブランチ push（自動） |
+| **st** | クラウド上の動作確認（ステージング） | Cloudflare（本番と別アカウント資源） | D1 `cinema_hashigo_st` | `develop` ブランチ push（自動。ADR-0016） |
 | **prod** | 本番 | Cloudflare | D1 `cinema_hashigo_prod` | Git タグ `v*` or 手動承認（後述） |
 
 - **local と st の役割分担**: local はエミュレーション中心で高速に回す。st は「実際の Cloudflare 上で Workers/D1/R2/KV/Queues/Browser Rendering が想定通り動くか」を確認する場所。エミュレーションでは再現しない挙動（Queues のリトライ、Access、Cron）は st で確認する。Browser Rendering は `wrangler dev` がローカル Chromium を起動するため local でも実機同等に検証できる（P4-7 時点の wrangler）。
@@ -179,8 +179,8 @@ SLACK_WEBHOOK_URL=http://localhost:1081/webhook
 
 ### 5.1 方針
 
-- **ST**: `main` への push で自動デプロイ（動作確認を速く回す）。
-- **本番**: `v*` タグの push を契機にデプロイ。かつ GitHub Environment `prod` に **required reviewers**（自分の承認）を設定し、承認ゲートを通す。誤爆デプロイを防ぐ。
+- **ST**: `develop` への push で自動デプロイ（動作確認を速く回す）。全 feature/fix ブランチは `develop` に PR マージされる実運用のため、統合ブランチである `develop` を契機にする（ADR-0016。当初は `main` push だったが、`develop → main` の同期が形骸化し ST が古いまま気付かれないリスクがあったため訂正）。
+- **本番**: `v*` タグの push を契機にデプロイ。かつ GitHub Environment `prod` に **required reviewers**（自分の承認）を設定し、承認ゲートを通す。誤爆デプロイを防ぐ。**タグは `main` から切る**ため、リリース前に `develop` の内容を `main` に反映（PR または fast-forward）しておくこと。同期を忘れると古いコードのままタグが切られる。
 - マイグレーションはデプロイ前に該当環境の D1 へ適用する。
 - テスト（型・lint・unit、特に DP 期待値テスト）が通らなければデプロイしない。
 
@@ -189,7 +189,7 @@ SLACK_WEBHOOK_URL=http://localhost:1081/webhook
 ```
 .github/workflows/
   ci.yml       # PR & push: install → typecheck → lint → test（デプロイなし）
-  deploy-st.yml   # push main: ci通過を前提に ST へ deploy + migrate
+  deploy-st.yml   # push develop: ci通過を前提に ST へ deploy + migrate
   deploy-prod.yml # push tag v*: 承認 → PROD へ deploy + migrate
 ```
 
@@ -200,7 +200,7 @@ name: ci
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [develop]
 jobs:
   build-test:
     runs-on: ubuntu-latest
@@ -215,13 +215,13 @@ jobs:
       - run: pnpm test          # DP期待値テスト（12 §7）を含む
 ```
 
-### 5.4 deploy-st.yml（main push で ST へ）
+### 5.4 deploy-st.yml（develop push で ST へ）
 
 ```yaml
 name: deploy-st
 on:
   push:
-    branches: [main]
+    branches: [develop]
 concurrency: { group: deploy-st, cancel-in-progress: true }
 jobs:
   deploy:
@@ -317,7 +317,7 @@ jobs:
 ```
 local:  wrangler d1 migrations apply cinema_hashigo --local
    ↓ 動作確認
-st:     （main push で Actions が）apply ... cinema_hashigo_st --env st --remote
+st:     （develop push で Actions が）apply ... cinema_hashigo_st --env st --remote
    ↓ クラウド上で確認
 prod:   （v* タグ + 承認で Actions が）apply ... cinema_hashigo_prod --env prod --remote
 ```
@@ -342,4 +342,4 @@ prod:   （v* タグ + 承認で Actions が）apply ... cinema_hashigo_prod --e
 | Workers Logs（ingest） | dev コンソール出力のみ | 有効（保持7日） | 有効（保持7日） |
 | Access（管理サイト） | 省略可 | 有効 | 有効 |
 | シークレット源 | `.dev.vars` | wrangler secret (st) | wrangler secret (prod) |
-| デプロイ | 手元実行 | main push（自動） | v* タグ＋承認 |
+| デプロイ | 手元実行 | develop push（自動） | v* タグ＋承認 |

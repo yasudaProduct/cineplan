@@ -36,7 +36,7 @@
 | GitHub リポジトリ | `yasudaProduct/cineplan`（origin 設定済み）✅ |
 | Cloudflare | wrangler ログイン済み ✅（プランは Free。Paid 加入は §3.1） |
 
-- P0-6 で追加される CI（typecheck/lint/test）は main への push で自動的に動き始める。deploy-st / deploy-prod は §3 の Secrets 設定まで実デプロイに失敗するが、これは想定内（`09_roadmap.md` P0-6 の Done 条件参照）。
+- P0-6 で追加される CI（typecheck/lint/test）は develop への push で自動的に動き始める（ADR-0016。当初は main pushだったが実運用に合わせて訂正）。deploy-st / deploy-prod は §3 の Secrets 設定まで実デプロイに失敗するが、これは想定内（`09_roadmap.md` P0-6 の Done 条件参照）。
 
 ## 2. P1 開始前
 

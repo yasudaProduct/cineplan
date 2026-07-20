@@ -40,6 +40,7 @@
 - [x] **P0-6 GitHub Actions（CI + デプロイ土台）**
   - `14_environments-deploy.md` §5 の `ci.yml` / `deploy-st.yml` / `deploy-prod.yml` を配置。ST=main push自動、本番=v*タグ＋承認ゲート。
   - Done: PR で ci（typecheck/lint/test）が走る。deploy ワークフローは構文上有効（Secrets 未設定なら実デプロイはスキップ/失敗でよい。人間が §5.6 の設定を行う前提）。
+  - **2026-07-20 追記（ST自動デプロイ契機の訂正・ADR-0016）**: P1以降、全 feature/fix ブランチは一貫して `develop` にPRマージされ運用されてきたが、ST自動デプロイの契機は当初設計どおり `main` push のままだった。`develop → main` の同期は2026-07-16のPR #11を最後に行われておらず、それ以降 `develop` にマージされた変更（PR #12〜#19。可観測性導入・Geminiタイムアウト対応等）はGitHub Actions経由でSTに一切反映されず、都度手動 `wrangler deploy --env st` で埋め合わせていたことが判明。`ci.yml`/`deploy-st.yml` のpushトリガーを `develop` に変更（`fix/st-deploy-trigger-develop`）。
 
 ## P1. 取込最小版（1劇場）
 

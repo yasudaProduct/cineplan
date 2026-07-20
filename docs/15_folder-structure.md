@@ -176,7 +176,7 @@ cinema-hashigo/                          # リポジトリルート
 └── .github/
     └── workflows/
         ├── ci.yml                       # PR & push: typecheck / lint / test（DP 期待値含む）
-        ├── deploy-st.yml                # main push → ST migrate + deploy（自動）
+        ├── deploy-st.yml                # develop push → ST migrate + deploy（自動。ADR-0016）
         └── deploy-prod.yml              # v* タグ + 承認 → PROD migrate + deploy
 
 ```
