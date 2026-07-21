@@ -127,7 +127,7 @@ describe('extractTextWithRetries（P4-7。リトライ予算は vision と共有
   })
 })
 
-// text 日単位分割（text_v2・ADR-0017）: 日付発見コール → 日別抽出コール → マージ
+// text 日単位分割（text_v3・ADR-0017）: 日付発見コール → 日別抽出コール → マージ
 describe('extractTextDaySplit', () => {
   const dayResult = (date: string, titles: string[], notes: string | null = null) =>
     okResponse({
@@ -155,7 +155,7 @@ describe('extractTextDaySplit', () => {
       ['2026-07-22', 'C'],
     ])
     expect(result.businessDate).toBe('2026-07-21')
-    expect(ext.promptVersion).toBe('text_v2')
+    expect(ext.promptVersion).toBe('text_v3')
     expect(ext.inTokens).toBe(3) // 1×3呼出の合算
     expect(ext.outTokens).toBe(3)
   })
@@ -177,6 +177,9 @@ describe('extractTextDaySplit', () => {
       expect(input.userText.indexOf('<task>')).toBeGreaterThan(input.userText.indexOf('</page>'))
     }
     expect(day.userText).toContain('2026-07-21')
+    // v3: 基準日（当日）を <page> 属性で両コールに渡す（日付見出しの無い当日ブロック対策・ADR-0017）
+    expect(discovery.userText).toContain('businessDate="2026-07-21"')
+    expect(day.userText).toContain('businessDate="2026-07-21"')
     // 全呼出でプレフィックス（<page>…</page>）が同一（キャッシュ親和レイアウト）
     const prefixOf = (t: string) => t.slice(0, t.indexOf('</page>'))
     expect(prefixOf(discovery.userText)).toBe(prefixOf(day.userText))
