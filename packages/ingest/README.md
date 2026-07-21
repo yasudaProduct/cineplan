@@ -76,7 +76,8 @@ src/
 ├── extraction/prompts/   # プロンプト（バージョン固定・既存版変更禁止）
 │   ├── vision_v1.ts      #   画像抽出
 │   ├── text_v1.ts        #   HTML 全日付一括抽出（本番経路からは引退。履歴・再現用に残置）
-│   └── text_v2.ts        #   HTML 日単位分割（日付発見 + 日別抽出。ADR-0017）
+│   ├── text_v2.ts        #   HTML 日単位分割・初版（履歴・再現用に残置）
+│   └── text_v3.ts        #   HTML 日単位分割・現行版（基準日を渡し日付見出し無し当日ブロックに対応。ADR-0017）
 ├── worker/               # 取込パイプライン各ステップ
 │   ├── fetch.ts          #   HTTP 取得（取得マナー）+ schedule 画像URL抽出
 │   ├── preprocess.ts     #   imagesToParts(画像→base64) / htmlToText

@@ -5,11 +5,11 @@ import {
   TEXT_V1_VERSION,
 } from '../extraction/prompts/text_v1'
 import {
-  buildTextV2SystemPrompt,
-  buildTextV2UserTextForDates,
-  buildTextV2UserTextForDay,
-  TEXT_V2_VERSION,
-} from '../extraction/prompts/text_v2'
+  buildTextV3SystemPrompt,
+  buildTextV3UserTextForDates,
+  buildTextV3UserTextForDay,
+  TEXT_V3_VERSION,
+} from '../extraction/prompts/text_v3'
 import { buildVisionV1SystemPrompt, VISION_V1_VERSION } from '../extraction/prompts/vision_v1'
 import type { ExtractInput, ImagePart, LlmEnv } from '../llm'
 import { createLlmClient, stripJsonFence } from '../llm'
@@ -227,7 +227,7 @@ export async function extractTextDaySplit(
   const now = opts?.now ?? (() => Date.now())
   const deadlineMs = opts?.deadlineMs ?? EXTRACTION_DEADLINE_MS
   const startedAt = now()
-  const systemPrompt = buildTextV2SystemPrompt(businessMonth)
+  const systemPrompt = buildTextV3SystemPrompt(businessMonth)
   const notes: string[] = []
   const outcomes: ExtractOutcome[] = []
 
@@ -271,10 +271,15 @@ export async function extractTextDaySplit(
           env,
           {
             systemPrompt,
-            userText: buildTextV2UserTextForDates(scheduleUrl, businessMonth, preprocessedText),
+            userText: buildTextV3UserTextForDates(
+              scheduleUrl,
+              businessMonth,
+              fallbackBusinessDate,
+              preprocessedText,
+            ),
             responseFormat: 'dateList',
           },
-          TEXT_V2_VERSION,
+          TEXT_V3_VERSION,
         ),
       ),
       (p) => ExtractedDateList.parse(p),
@@ -292,11 +297,11 @@ export async function extractTextDaySplit(
   })
   if (dates.length > MAX_DATES) {
     logInfo('extract.dates.truncated', { found: dates.length, cap: MAX_DATES })
-    notes.push(`営業日${dates.length}件中${MAX_DATES}件のみ抽出(text_v2日分割)`)
+    notes.push(`営業日${dates.length}件中${MAX_DATES}件のみ抽出(text_v3日分割)`)
     dates = dates.slice(0, MAX_DATES)
   }
   if (dates.length === 0 && notes.length === 0) {
-    notes.push('営業日をページから検出できず上映0件(text_v2日分割)')
+    notes.push('営業日をページから検出できず上映0件(text_v3日分割)')
   }
 
   // 2) 日別抽出コール（発見した日付ごとに1回。対象日外の行は除外し notes に記録）
@@ -311,14 +316,15 @@ export async function extractTextDaySplit(
             env,
             {
               systemPrompt,
-              userText: buildTextV2UserTextForDay(
+              userText: buildTextV3UserTextForDay(
                 scheduleUrl,
                 businessMonth,
+                fallbackBusinessDate,
                 preprocessedText,
                 date,
               ),
             },
-            TEXT_V2_VERSION,
+            TEXT_V3_VERSION,
           ),
         ),
         parseExtraction,
@@ -327,7 +333,7 @@ export async function extractTextDaySplit(
     outcomes.push(day.ext)
     const kept = day.result.screenings.filter((sc) => sc.date == null || sc.date === date)
     const dropped = day.result.screenings.length - kept.length
-    if (dropped > 0) notes.push(`${date}: 対象日外${dropped}件を除外(text_v2日分割)`)
+    if (dropped > 0) notes.push(`${date}: 対象日外${dropped}件を除外(text_v3日分割)`)
     if (day.result.notes) notes.push(`${date}: ${day.result.notes}`)
     screenings.push(...kept.map((sc) => ({ ...sc, date })))
     logInfo('extract.day.ok', {
@@ -350,7 +356,7 @@ export async function extractTextDaySplit(
     parsed: result,
     raw: '', // マージ結果のため単一の生出力は無い（各呼出の生出力サイズは llm.call.ok に記録済み）
     model: last.model,
-    promptVersion: TEXT_V2_VERSION,
+    promptVersion: TEXT_V3_VERSION,
     inTokens: sumTokens(outcomes.map((o) => o.inTokens)),
     outTokens: sumTokens(outcomes.map((o) => o.outTokens)),
   }
