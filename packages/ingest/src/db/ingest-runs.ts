@@ -184,10 +184,10 @@ export async function countTodaySiteFetches(
 // 孤児run の掃除（fix/p4-manual-ingest-orphan・docs/06 §7）。ブラウザ接続断などで
 // Workers の実行がキャンセルされ、queued/fetching/extracting のまま更新が止まった run を
 // extraction_failed に確定する。/admin ダッシュボード読込時に呼ばれる（新規 Cron は追加しない）。
-// Gemini抽出の最悪ケース（1回120秒 × 最大4回=リトライ予算 LLM_API_MAX_RETRIES(2)+
-// MALFORMED_OUTPUT_MAX_RETRIES(1) の worst-case interleaving ≈ 8分。extract.ts）
-// + rendered fetch のブラウザ起動分に十分な余裕を持たせた値。
-const STALE_RUN_MINUTES = 20
+// text 日分割（ADR-0017）の正常上限 = 抽出デッドライン EXTRACTION_DEADLINE_MS(10分)
+// + 呼出中の超過猶予(最大120秒) + rendered fetch のブラウザ起動分。started_at 起点の
+// 判定のため、実行中の正当な run を誤って打ち切らないよう余裕を持たせた値。
+const STALE_RUN_MINUTES = 30
 
 // 戻り値は掃除した run の id 一覧（呼び出し側で reap.done ログに載せ、Workers Logs から
 // 「いつ・どの run が孤児として確定されたか」を追跡できるようにする）。

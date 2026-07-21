@@ -4,7 +4,7 @@ import { getTheater } from '../db/theaters'
 import type { Env } from '../env'
 import { logError, logInfo } from '../log'
 import { TheaterNotFoundError } from './errors'
-import { extractTextWithRetries, extractVisionWithRetries } from './extract'
+import { extractTextDaySplit, extractVisionWithRetries } from './extract'
 import type { FetchedImage } from './fetch'
 import { normalize } from './normalize'
 import { sendSlack } from './notify'
@@ -109,18 +109,19 @@ export async function reextractFromSnapshot(env: Env, sourceRunId: string): Prom
     images: extractInput.kind === 'vision' ? extractInput.images.length : undefined,
   })
 
-  // 抽出（リトライ込み・docs/06 §7）→ 検証 → 通常書込パス（pipeline と同一）
+  // 抽出（リトライ込み・docs/06 §7。text は日単位分割・ADR-0017）→ 検証 → 通常書込パス（pipeline と同一）
   const extractStartedAt = Date.now()
   let outcome: Awaited<ReturnType<typeof extractVisionWithRetries>>
   try {
     outcome =
       extractInput.kind === 'vision'
         ? await extractVisionWithRetries(env, extractInput.images, snapshotDate.slice(0, 7))
-        : await extractTextWithRetries(
+        : await extractTextDaySplit(
             env,
             extractInput.text,
             snapshotDate.slice(0, 7),
             theater.scheduleUrl,
+            snapshotDate,
           )
   } catch (e) {
     const msg = (e as Error).message

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ExtractedScreening } from './extraction'
+import { ExtractedDateList, ExtractedScreening } from './extraction'
 import { HHMM } from './plan'
 
 // review指摘#6の回帰テスト: 時刻の分に 00-59 制約が無いと、LLM の幻覚や不正入力
@@ -26,6 +26,24 @@ describe('ExtractedScreening.startTime（時0〜29・分00〜59。docs/06 §3・
   it('時が30以上は拒否する', () => {
     expect(valid('30:00')).toBe(false)
     expect(valid('99:00')).toBe(false)
+  })
+})
+
+describe('ExtractedDateList（text 日分割の日付発見コール。docs/06 §4・ADR-0017）', () => {
+  it('YYYY-MM-DD の配列を許容し、notes は省略・null とも可', () => {
+    expect(ExtractedDateList.safeParse({ dates: ['2026-07-21', '2026-07-22'] }).success).toBe(true)
+    expect(ExtractedDateList.safeParse({ dates: [], notes: null }).success).toBe(true)
+    expect(ExtractedDateList.safeParse({ dates: [], notes: '休館中' }).success).toBe(true)
+  })
+
+  it('日付形式でない要素は拒否する（LLM の "7/21" 等の未補完出力を弾く）', () => {
+    expect(ExtractedDateList.safeParse({ dates: ['7/21'] }).success).toBe(false)
+    expect(ExtractedDateList.safeParse({ dates: ['2026-7-21'] }).success).toBe(false)
+    expect(ExtractedDateList.safeParse({ dates: [null] }).success).toBe(false)
+  })
+
+  it('dates 欠落は拒否する', () => {
+    expect(ExtractedDateList.safeParse({}).success).toBe(false)
   })
 })
 
