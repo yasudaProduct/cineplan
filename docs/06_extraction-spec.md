@@ -77,7 +77,7 @@ export const ExtractionResult = z.object({
 ## 4. プロンプト設計
 
 - 場所: `packages/ingest/src/extraction/prompts/`。**プロンプトは必ずバージョン番号付きファイルで管理し、ingest_runs.prompt_version に記録する**（過去実行の再現のため）。既存バージョンのファイルは変更せず、修正は新バージョン追加で行う。プロンプト本文はプロバイダ非依存に保つ。方式別に分ける: `text_v{N}.ts`（HTML）/ `vision_v{N}.ts`（画像）。
-- プロバイダ/モデル: **本番/ST 既定 Google Gemini Flash（無料ティア。ADR-0011）、ローカル開発は Ollama 既定**。呼び出しはプロバイダ抽象化した抽出クライアント越しに行い、`provider`（`gemini` | `ollama` | `workers-ai` | `anthropic`）と `model` を設定値（`LLM_PROVIDER` / wrangler var）で切替える。具体モデルID（例: Gemini は `gemini-flash` 系、Ollama は `qwen2.5` 等）は実装時に確定する。精度不足は管理サイトの検証NG率で観測し、上位モデル/別プロバイダへ差し替える（抽象化済みのため容易）。
+- プロバイダ/モデル: **本番/ST 既定 Google Gemini Flash 系（無料ティア。ADR-0011。モデルは `GEMINI_MODEL=gemini-flash-lite-latest`・ADR-0018）、ローカル開発は Ollama 既定**。呼び出しはプロバイダ抽象化した抽出クライアント越しに行い、`provider`（`gemini` | `ollama` | `workers-ai` | `anthropic`）と `model` を設定値（`LLM_PROVIDER` / wrangler var）で切替える。具体モデルID（例: Gemini は `gemini-flash` 系、Ollama は `qwen2.5` 等）は実装時に確定する。精度不足は管理サイトの検証NG率で観測し、上位モデル/別プロバイダへ差し替える（抽象化済みのため容易）。
 - 呼出パラメータ: temperature 0。JSON 構造化出力は Gemini の `responseMimeType=application/json` + `responseSchema`（§3 の zod を JSON Schema 化）で担保する。出力上限は想定件数 × 60 トークン + 500 目安。
 - 記録: ingest_runs に provider + model + in/out トークンを残す（プロバイダ横断でコスト・品質を比較）。`llm_model` は provider 込みの識別子（例: `gemini:gemini-flash`）とする。
 
