@@ -55,6 +55,9 @@ name = "cinema-ingest-st"
 APP_ENV = "st"
 # 抽出プロバイダを明示（ADR-0011: 本番/ST は Gemini 無料枠）。GEMINI_API_KEY は secret。
 LLM_PROVIDER = "gemini"
+# Flash-Lite 系の最新安定版（ADR-0018）。最上位 Flash（gemini-flash-latest）は無料枠の
+# 容量逼迫（503/応答保留→120sタイムアウト）で全取込が失敗するため切替。戻す場合はこの行を削除。
+GEMINI_MODEL = "gemini-flash-lite-latest"
 
 # Workers Logs（環境ごとに明示。既定セクションからは継承されない）
 [env.st.observability]
@@ -96,6 +99,8 @@ name = "cinema-ingest-prod"
 APP_ENV = "prod"
 # 抽出プロバイダを明示（ADR-0011: 本番/ST は Gemini 無料枠）。GEMINI_API_KEY は secret。
 LLM_PROVIDER = "gemini"
+# Flash-Lite 系の最新安定版（ADR-0018。ST と同一に保つ）
+GEMINI_MODEL = "gemini-flash-lite-latest"
 
 # Workers Logs（環境ごとに明示。既定セクションからは継承されない）
 [env.prod.observability]

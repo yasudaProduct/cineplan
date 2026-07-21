@@ -25,6 +25,7 @@ Claude Code は、ここに記録された決定（特に内部利用限定・�
 | 0015 | 管理サイトに抽出検証用の上映データ表示を追加（0002 のスコープ明確化） | Accepted |
 | 0016 | ST 自動デプロイ契機を `main` push から `develop` push に変更（0010 の訂正） | Accepted |
 | 0017 | text 抽出を日単位分割呼出に変更（タイムアウト根治。vision は 0012 のまま） | Accepted |
+| 0018 | ST/prod の抽出モデルを `gemini-flash-lite-latest` に変更（0011 の更新） | Accepted |
 
 ## テンプレート（新規追加時にコピー）
 

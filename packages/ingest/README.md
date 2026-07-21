@@ -109,7 +109,7 @@ src/
 
 | 用途 | provider | 備考 |
 |---|---|---|
-| **本番 / ST** | `gemini`（Gemini Flash 無料枠） | 品質の基準（`GEMINI_API_KEY`） |
+| **本番 / ST** | `gemini`（`GEMINI_MODEL=gemini-flash-lite-latest`・無料枠。ADR-0018） | 品質の基準（`GEMINI_API_KEY`）。最上位 Flash は無料枠の容量逼迫で不安定なため Lite 系エイリアスを使用 |
 | **開発** | `ollama`（ローカル・無料・オフライン） | vision はビジョン対応モデル要（例 `qwen2.5vl:7b`） |
 
 - **抽出方式は劇場ごと**（`theaters.extract_method` = `text` | `vision`）。ミニシアターは月間スケジュール画像を **vision** で抽出する（ADR-0012）。
