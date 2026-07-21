@@ -29,7 +29,7 @@ const fetchScheduleMock = vi.fn()
 const fetchRenderedMock = vi.fn()
 const sendSlackMock = vi.fn(async () => {})
 const extractVisionMock = vi.fn()
-const extractTextMock = vi.fn()
+const extractTextDaySplitMock = vi.fn()
 
 vi.mock('../../db/theaters', () => ({ getTheater: getTheaterMock, listActiveTheaters: vi.fn() }))
 vi.mock('../../db/ingest-runs', () => ({
@@ -45,7 +45,7 @@ vi.mock('../fetch', () => ({
 vi.mock('../notify', () => ({ sendSlack: sendSlackMock }))
 vi.mock('../extract', () => ({
   extractVisionWithRetries: extractVisionMock,
-  extractTextWithRetries: extractTextMock,
+  extractTextDaySplit: extractTextDaySplitMock,
 }))
 vi.mock('../../db/movies', () => ({ resolveMovieId: vi.fn(async () => 'mov_1') }))
 vi.mock('../../db/screenings', () => ({ replaceScreeningsByDate: vi.fn(async () => 1) }))
@@ -129,7 +129,7 @@ describe('ingestTheater — rendered + text 分岐（P4-7）', () => {
     },
   }
 
-  it('fetchMethod=rendered は Browser Rendering 経由で取得し、text 抽出で succeeded になる', async () => {
+  it('fetchMethod=rendered は Browser Rendering 経由で取得し、text 抽出（日分割）で succeeded になる', async () => {
     getTheaterMock.mockResolvedValue({
       ...compliantTheater,
       fetchMethod: 'rendered',
@@ -140,17 +140,18 @@ describe('ingestTheater — rendered + text 分岐（P4-7）', () => {
       images: [],
       fetchedAt: '2026-07-13T00:00:00.000Z',
     })
-    extractTextMock.mockResolvedValue(okOutcome)
+    extractTextDaySplitMock.mockResolvedValue(okOutcome)
     const r = await ingestTheater({ SNAPSHOTS: { put: vi.fn() } } as never, 'thr_test', 'manual')
     expect(r.status).toBe('succeeded')
     expect(fetchRenderedMock).toHaveBeenCalledTimes(1)
     expect(fetchScheduleMock).not.toHaveBeenCalled()
-    expect(extractTextMock).toHaveBeenCalledTimes(1)
+    expect(extractTextDaySplitMock).toHaveBeenCalledTimes(1)
     expect(extractVisionMock).not.toHaveBeenCalled()
-    // htmlToText 済みテキスト（タグ簡約）と scheduleUrl が渡る
-    const args = extractTextMock.mock.calls[0] as unknown[]
+    // htmlToText 済みテキスト（タグ簡約）・scheduleUrl・取込日（businessDate）が渡る
+    const args = extractTextDaySplitMock.mock.calls[0] as unknown[]
     expect(String(args[1])).toContain('<table>')
     expect(args[3]).toBe('http://example.com/schedule')
+    expect(String(args[4])).toMatch(/^\d{4}-\d{2}-\d{2}$/)
   })
 
   it('static+vision は従来どおり fetchSchedule + vision 抽出（回帰）', async () => {
@@ -164,7 +165,7 @@ describe('ingestTheater — rendered + text 分岐（P4-7）', () => {
     const r = await ingestTheater({ SNAPSHOTS: { put: vi.fn() } } as never, 'thr_test', 'manual')
     expect(r.status).toBe('succeeded')
     expect(extractVisionMock).toHaveBeenCalledTimes(1)
-    expect(extractTextMock).not.toHaveBeenCalled()
+    expect(extractTextDaySplitMock).not.toHaveBeenCalled()
   })
 
   it('vision なのに画像 0 件は extraction_failed', async () => {

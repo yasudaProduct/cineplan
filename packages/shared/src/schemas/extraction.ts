@@ -31,3 +31,10 @@ export const ExtractionResult = z.object({
   notes: z.string().nullish(), // LLM が気付いた異常（"休館日と記載" 等）
 })
 export type ExtractionResult = z.infer<typeof ExtractionResult>
+
+// text 日単位分割の日付発見コールの出力（docs/06 §1・§4 text_v2・ADR-0017）。
+export const ExtractedDateList = z.object({
+  dates: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)), // ページに上映掲載がある営業日
+  notes: z.string().nullish(),
+})
+export type ExtractedDateList = z.infer<typeof ExtractedDateList>

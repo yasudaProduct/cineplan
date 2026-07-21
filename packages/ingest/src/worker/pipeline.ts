@@ -6,7 +6,7 @@ import type { Env } from '../env'
 import { logError, logInfo } from '../log'
 import { assertComplianceGate } from './compliance-guard'
 import { TheaterNotFoundError } from './errors'
-import { extractTextWithRetries, extractVisionWithRetries } from './extract'
+import { extractTextDaySplit, extractVisionWithRetries } from './extract'
 import { fetchRenderedSchedule, fetchSchedule } from './fetch'
 import { normalize } from './normalize'
 import { sendSlack } from './notify'
@@ -115,7 +115,7 @@ export async function ingestTheater(
     )
   }
 
-  // 3〜4. 抽出（vision=画像 / text=htmlToText 済みテキスト。P4-7）+ zod 検証。
+  // 3〜4. 抽出（vision=画像1呼出 / text=htmlToText 済みテキストの日単位分割。ADR-0017）+ zod 検証。
   // LLM APIエラー/パース不能/zod NG は関数内でリトライ済み（docs/06 §7 のリトライ予算。
   // fetch 済み入力の使い回しのみで再取得はしない）。
   const extractStartedAt = Date.now()
@@ -124,11 +124,12 @@ export async function ingestTheater(
     outcome =
       theater.extractMethod === 'vision'
         ? await extractVisionWithRetries(env, imagesToParts(fetched.images), businessMonth)
-        : await extractTextWithRetries(
+        : await extractTextDaySplit(
             env,
             htmlToText(fetched.scheduleHtml),
             businessMonth,
             theater.scheduleUrl,
+            businessDate,
           )
   } catch (e) {
     logError('run.extract.fail', e, { runId, theaterId, ms: Date.now() - extractStartedAt })

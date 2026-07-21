@@ -34,6 +34,16 @@ const RESPONSE_SCHEMA = {
   required: ['businessDate', 'screenings'],
 }
 
+// ExtractedDateList 対応（text 日分割の日付発見コール。docs/06 §4 text_v2・ADR-0017）。
+const DATE_LIST_RESPONSE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    dates: { type: 'ARRAY', items: { type: 'STRING' } },
+    notes: { type: 'STRING', nullable: true },
+  },
+  required: ['dates'],
+}
+
 type GeminiPart = { text: string } | { inline_data: { mime_type: string; data: string } }
 
 interface GeminiResponse {
@@ -59,7 +69,8 @@ export function createGeminiClient(opts: { apiKey: string; model: string }): Llm
         generationConfig: {
           temperature: 0,
           responseMimeType: 'application/json',
-          responseSchema: RESPONSE_SCHEMA,
+          responseSchema:
+            input.responseFormat === 'dateList' ? DATE_LIST_RESPONSE_SCHEMA : RESPONSE_SCHEMA,
         },
       }
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${opts.model}:generateContent`
