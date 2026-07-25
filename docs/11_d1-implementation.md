@@ -138,6 +138,21 @@ CREATE INDEX idx_screenings_lookup ON screenings (business_date, theater_id, sta
 CREATE INDEX idx_screenings_movie ON screenings (business_date, movie_id);
 ```
 
+### 0005_theater_fetch_day_mode.sql（ADR-0019）
+
+1ページに1日分しか掲載しないサイト（T・ジョイ梅田等）から複数日を取り込むための劇場ごと設定。`theaters` には 0001 由来の**テーブル制約** `CHECK (fetch_method IN ('static','rendered'))` があり SQLite ではテーブル再作成なしに削除できないため、`fetch_method` の値は増やさず、単一列 CHECK を持つ新規カラムで直交に表現する。既定値は後方互換（`single` / `1`）で backfill は不要。
+
+```sql
+ALTER TABLE theaters
+  ADD COLUMN fetch_day_mode TEXT NOT NULL DEFAULT 'single'
+  CHECK (fetch_day_mode IN ('single','tabs','url_template'));
+
+-- 上限10は packages/shared の MAX_FETCH_DAYS と一致させる（手書き SQL への最終防御）
+ALTER TABLE theaters
+  ADD COLUMN fetch_days INTEGER NOT NULL DEFAULT 1
+  CHECK (fetch_days >= 0 AND fetch_days <= 10);
+```
+
 ### seeds/dev_seed.sql（ローカル専用・マイグレーションではない）
 
 マイグレーション列に入れず、ローカルでのみ次で投入する（ST/prod には流さない）:

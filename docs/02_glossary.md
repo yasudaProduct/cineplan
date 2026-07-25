@@ -31,7 +31,9 @@
 | 取込実行 | `IngestRun` / `ingest_runs` | Ingest の実行記録。ステータス・件数・消費トークン等を持つ。 |
 | 取得 | `Fetch` | 対象ページの HTML を取得し R2 に保存するステップ。 |
 | 取得方式 | `fetchMethod` | `static`（fetch のみ）/ `rendered`（Browser Rendering 使用）。劇場マスタの属性。 |
-| スナップショット | `Snapshot` | R2 に保存された取得時点の生 HTML。キーは `raw/{theaterId}/{date}/{fetchedAt}.html`。 |
+| 複数日取得方式 | `fetchDayMode` | `single`（1ページ・既定）/ `tabs`（日付タブを順にクリック）/ `url_template`（URL の `{date}` を置換）。劇場マスタの属性（ADR-0019）。 |
+| 取得日数 | `fetchDays` | 1セッションで取得する日数。`0`=検出タブ全件（`tabs` のみ）。上限 `MAX_FETCH_DAYS`=10。 |
+| スナップショット | `Snapshot` | R2 に保存された取得時点の生 HTML。キーは `raw/{theaterId}/{date}/{fetchedAt}.html`（複数日取得は各日 `..._d{date}.html` も）。 |
 | 抽出 | `Extraction` | Snapshot から LLM で Screening 配列（JSON）を得るステップ。 |
 | 検証 | `Validation` | 抽出結果に対する zod スキーマ検証 + 妥当性検証（件数レンジ・日時レンジ等）。 |
 | レビューキュー | `ReviewQueue` / `extraction_reviews` | 検証NGとなった抽出結果を管理者が目視確認するための待ち行列。 |

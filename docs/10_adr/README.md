@@ -26,6 +26,7 @@ Claude Code は、ここに記録された決定（特に内部利用限定・�
 | 0016 | ST 自動デプロイ契機を `main` push から `develop` push に変更（0010 の訂正） | Accepted |
 | 0017 | text 抽出を日単位分割呼出に変更（タイムアウト根治。vision は 0012 のまま） | Accepted |
 | 0018 | ST/prod の抽出モデルを `gemini-flash-lite-latest` に変更（0011 の更新） | Accepted |
+| 0019 | 劇場ごとの複数日取得（日付タブ / URLテンプレート）と取得マナーの単位改定（0003 の構造非依存は維持） | Accepted |
 
 ## テンプレート（新規追加時にコピー）
 
