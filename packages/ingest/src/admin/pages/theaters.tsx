@@ -52,6 +52,12 @@ export function TheaterListPage(props: {
                 </td>
                 <td>
                   {t.fetchMethod}/{t.extractMethod}
+                  {t.fetchDayMode !== 'single' && (
+                    <span class="small">
+                      {' '}
+                      {t.fetchDayMode}×{t.fetchDays === 0 ? '全' : t.fetchDays}
+                    </span>
+                  )}
                 </td>
                 <td>
                   {last ? (
@@ -153,6 +159,33 @@ function UpsertFields({ t }: { t?: TheaterRecord }) {
           </option>
         </select>
       </div>
+      <label for="f-fetchDayMode">
+        fetchDayMode / fetchDays（複数日取得。ADR-0019・docs/08 §3）
+      </label>
+      <div style="display:flex; gap:8px; max-width:560px">
+        <select id="f-fetchDayMode" name="fetchDayMode">
+          {(['single', 'tabs', 'url_template'] as const).map((v) => (
+            <option value={v} selected={(t?.fetchDayMode ?? 'single') === v}>
+              {v}
+            </option>
+          ))}
+        </select>
+        <input
+          type="number"
+          name="fetchDays"
+          required
+          min="0"
+          max="10"
+          value={t ? String(t.fetchDays) : '1'}
+          aria-label="fetchDays"
+        />
+      </div>
+      <p class="small">
+        single=1ページ（既定）/ tabs=日付タブを順にクリック（fetchMethod=rendered 必須）/
+        url_template=scheduleUrl の {'{date}'} を置換（fetchMethod=static）。fetchDays:
+        0=検出タブ全件（tabs のみ）・上限10。1回の取込で最大 1+fetchDays 回先方へアクセスする
+        （5秒間隔・直列）。
+      </p>
       <label for="f-robotsStatus">
         robotsStatus（人間が robots.txt を確認して選ぶ。docs/16 §2.2）
       </label>
@@ -273,9 +306,16 @@ export function TheaterEditPage(props: {
             <p class="small">prod は cron のみ（手動取込は無効。docs/14 §3.2）。</p>
           ) : (
             <form method="post" action={`/admin/theaters/${t.id}/ingest`}>
+              {t.fetchDayMode !== 'single' && (
+                <p class="small">
+                  この劇場は複数日取得（{t.fetchDayMode}）のため、1回の取込で最大{' '}
+                  {1 + (t.fetchDays === 0 ? 10 : t.fetchDays)}{' '}
+                  回先方サイトへアクセスします（5秒間隔・直列。docs/08 §3・ADR-0019）。
+                </p>
+              )}
               {props.todayFetches > 0 && (
                 <p class="small warn-text">
-                  ⚠ 本日すでに {props.todayFetches} 回取得済み。同一サイト1日1回（docs/08
+                  ⚠ 本日すでに {props.todayFetches} 回取得済み。同一サイト1日1セッション（docs/08
                   §3）を破る2回目の取得は人間の明示判断が必要:
                   <br />
                   <label style="display:inline; font-weight:400">
