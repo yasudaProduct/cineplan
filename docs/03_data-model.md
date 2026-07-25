@@ -43,6 +43,8 @@ CREATE TABLE theaters (
   schedule_url      TEXT NOT NULL,                -- 取得対象 URL（日付はテンプレート可: {date}）
   fetch_method      TEXT NOT NULL DEFAULT 'static', -- static | rendered
   extract_method    TEXT NOT NULL DEFAULT 'text',  -- text | vision（ADR-0012。migration 0002）
+  fetch_day_mode    TEXT NOT NULL DEFAULT 'single', -- single | tabs | url_template（ADR-0019。migration 0005）
+  fetch_days        INTEGER NOT NULL DEFAULT 1,    -- 取得日数。0=検出タブ全件（tabs のみ）。上限 MAX_FETCH_DAYS=10
   official_url      TEXT NOT NULL,                -- 利用者誘導先（予約はこちら）
   -- コンプライアンス記録（F-24）
   terms_note        TEXT,                         -- 規約確認メモ

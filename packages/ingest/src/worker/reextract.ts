@@ -4,7 +4,12 @@ import { getTheater } from '../db/theaters'
 import type { Env } from '../env'
 import { logError, logInfo } from '../log'
 import { TheaterNotFoundError } from './errors'
-import { extractTextDaySplit, extractVisionWithRetries } from './extract'
+import {
+  type DayDocument,
+  extractTextDaySplit,
+  extractTextPerDocument,
+  extractVisionWithRetries,
+} from './extract'
 import type { FetchedImage } from './fetch'
 import { normalize } from './normalize'
 import { sendSlack } from './notify'
@@ -25,6 +30,12 @@ export class SnapshotNotFoundError extends Error {
 // 再抽出時に、抽出がカバーしない日まで洗い替え範囲へ入り新しいデータを消しうる）。
 export function snapshotDateOf(snapshotKey: string): string | null {
   const m = snapshotKey.match(/^raw\/[^/]+\/(\d{4}-\d{2}-\d{2})\//)
+  return m ? (m[1] ?? null) : null
+}
+
+// 複数日取得（ADR-0019）の日別スナップショットキー（{prefix}_d{date}.html）から日付を得る。
+export function snapshotDayDateOf(key: string): string | null {
+  const m = key.match(/_d(\d{4}-\d{2}-\d{2})\.html$/)
   return m ? (m[1] ?? null) : null
 }
 
@@ -53,10 +64,13 @@ export async function reextractFromSnapshot(env: Env, sourceRunId: string): Prom
   if (!theater) throw new TheaterNotFoundError(source.theater_id)
 
   // 抽出入力をスナップショットから復元する。
-  // vision: 保存済み画像（{prefix}_{n}.{ext}）/ text: 保存済み HTML（{prefix}.html。P4-7）
+  // vision: 保存済み画像（{prefix}_{n}.{ext}）
+  // text:   複数日取得（ADR-0019）は日別 HTML（{prefix}_d{date}.html）、
+  //         無ければ従来の単一 HTML（{prefix}.html。P4-7。既存 run はすべてこちら）
   let extractInput:
     | { kind: 'vision'; images: ReturnType<typeof imagesToParts> }
     | { kind: 'text'; text: string }
+    | { kind: 'text-days'; docs: DayDocument[] }
   if (theater.extractMethod === 'vision') {
     const listed = await env.SNAPSHOTS.list({ prefix: `${source.snapshot_key}_` })
     const imageKeys = listed.objects
@@ -81,13 +95,29 @@ export async function reextractFromSnapshot(env: Env, sourceRunId: string): Prom
     }
     extractInput = { kind: 'vision', images: imagesToParts(fetchedImages) }
   } else {
-    const obj = await env.SNAPSHOTS.get(`${source.snapshot_key}.html`)
-    if (!obj) {
-      throw new SnapshotNotFoundError(
-        `HTML スナップショットがありません（${source.snapshot_key}.html）`,
-      )
+    const listed = await env.SNAPSHOTS.list({ prefix: `${source.snapshot_key}_` })
+    const dayKeys = listed.objects
+      .map((o) => o.key)
+      .filter((k) => snapshotDayDateOf(k))
+      .sort()
+    if (dayKeys.length > 0) {
+      const docs: DayDocument[] = []
+      for (const key of dayKeys) {
+        const obj = await env.SNAPSHOTS.get(key)
+        const date = snapshotDayDateOf(key)
+        if (!obj || !date) continue
+        docs.push({ date, text: htmlToText(await obj.text()), url: theater.scheduleUrl })
+      }
+      extractInput = { kind: 'text-days', docs }
+    } else {
+      const obj = await env.SNAPSHOTS.get(`${source.snapshot_key}.html`)
+      if (!obj) {
+        throw new SnapshotNotFoundError(
+          `HTML スナップショットがありません（${source.snapshot_key}.html）`,
+        )
+      }
+      extractInput = { kind: 'text', text: htmlToText(await obj.text()) }
     }
-    extractInput = { kind: 'text', text: htmlToText(await obj.text()) }
   }
 
   // 新しい run として記録（business_date は実行日ではなくスナップショットの取得日:
@@ -107,22 +137,31 @@ export async function reextractFromSnapshot(env: Env, sourceRunId: string): Prom
     extractMethod: theater.extractMethod,
     inputChars: extractInput.kind === 'text' ? extractInput.text.length : undefined,
     images: extractInput.kind === 'vision' ? extractInput.images.length : undefined,
+    docs: extractInput.kind === 'text-days' ? extractInput.docs.length : undefined,
   })
 
-  // 抽出（リトライ込み・docs/06 §7。text は日単位分割・ADR-0017）→ 検証 → 通常書込パス（pipeline と同一）
+  // 抽出（リトライ込み・docs/06 §7。text は日単位分割 ADR-0017 / 複数日文書 ADR-0019）
+  // → 検証 → 通常書込パス（pipeline と同一）
   const extractStartedAt = Date.now()
   let outcome: Awaited<ReturnType<typeof extractVisionWithRetries>>
   try {
     outcome =
       extractInput.kind === 'vision'
         ? await extractVisionWithRetries(env, extractInput.images, snapshotDate.slice(0, 7))
-        : await extractTextDaySplit(
-            env,
-            extractInput.text,
-            snapshotDate.slice(0, 7),
-            theater.scheduleUrl,
-            snapshotDate,
-          )
+        : extractInput.kind === 'text-days'
+          ? await extractTextPerDocument(
+              env,
+              extractInput.docs,
+              snapshotDate.slice(0, 7),
+              snapshotDate,
+            )
+          : await extractTextDaySplit(
+              env,
+              extractInput.text,
+              snapshotDate.slice(0, 7),
+              theater.scheduleUrl,
+              snapshotDate,
+            )
   } catch (e) {
     const msg = (e as Error).message
     logError('run.extract.fail', e, {

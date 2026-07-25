@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { FetchMethod, RobotsStatus, TheaterStatus } from './theater'
+import { FetchDayMode, FetchMethod, MAX_FETCH_DAYS, RobotsStatus, TheaterStatus } from './theater'
 
 // 抽出方式（ADR-0012）。text=HTML→テキスト / vision=画像→マルチモーダル
 export const ExtractMethod = z.enum(['text', 'vision'])
@@ -47,6 +47,9 @@ export const TheaterRecord = z.object({
   scheduleUrl: z.string(),
   fetchMethod: FetchMethod,
   extractMethod: ExtractMethod,
+  // 複数日取得（ADR-0019）。既定は single / 1（現行動作）
+  fetchDayMode: FetchDayMode,
+  fetchDays: z.number().int().min(0).max(MAX_FETCH_DAYS),
   officialUrl: z.string(),
   termsNote: z.string().nullable(),
   termsCheckedAt: z.string().nullable(),
@@ -57,21 +60,77 @@ export type TheaterRecord = z.infer<typeof TheaterRecord>
 // 劇場マスタの作成/更新フォーム入力（管理サイト P4-3。docs/07 §2.3）。
 // status は含めない: 新規は必ず paused（docs/06 §9 受入手順）、変更は専用アクションで
 // 昇格ゲート（robots/terms。docs/08 §0 ルール5）を通す。
-export const TheaterUpsert = z.object({
-  name: z.string().trim().min(1),
-  shortName: z.string().trim().min(1).nullish(),
-  lat: z.coerce.number().gte(-90).lte(90),
-  lng: z.coerce.number().gte(-180).lte(180),
-  nearestStation: z.string().trim().min(1),
-  walkMinFromSta: z.coerce.number().int().min(0).max(120),
-  scheduleUrl: z.string().url(),
-  fetchMethod: FetchMethod,
-  extractMethod: ExtractMethod,
-  officialUrl: z.string().url(),
-  termsNote: z.string().trim().min(1).nullish(),
-  termsCheckedAt: z.string().datetime().nullish(),
-  robotsStatus: RobotsStatus,
-})
+export const TheaterUpsert = z
+  .object({
+    name: z.string().trim().min(1),
+    shortName: z.string().trim().min(1).nullish(),
+    lat: z.coerce.number().gte(-90).lte(90),
+    lng: z.coerce.number().gte(-180).lte(180),
+    nearestStation: z.string().trim().min(1),
+    walkMinFromSta: z.coerce.number().int().min(0).max(120),
+    scheduleUrl: z.string().url(),
+    fetchMethod: FetchMethod,
+    extractMethod: ExtractMethod,
+    fetchDayMode: FetchDayMode,
+    fetchDays: z.coerce.number().int().min(0).max(MAX_FETCH_DAYS),
+    officialUrl: z.string().url(),
+    termsNote: z.string().trim().min(1).nullish(),
+    termsCheckedAt: z.string().datetime().nullish(),
+    robotsStatus: RobotsStatus,
+  })
+  // 複数日取得（ADR-0019）の組合せ検証。手書き設定でも矛盾した状態を作らせない。
+  .superRefine((v, ctx) => {
+    const hasTemplate = v.scheduleUrl.includes('{date}')
+    if (v.fetchDayMode === 'url_template' && !hasTemplate) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['scheduleUrl'],
+        message: 'fetchDayMode=url_template のとき scheduleUrl に {date} が必要です',
+      })
+    }
+    if (v.fetchDayMode !== 'url_template' && hasTemplate) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['scheduleUrl'],
+        message: '{date} を含む URL は fetchDayMode=url_template のときのみ使えます',
+      })
+    }
+    if (v.fetchDayMode === 'tabs' && v.fetchMethod !== 'rendered') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['fetchDayMode'],
+        message: 'fetchDayMode=tabs は fetchMethod=rendered が必要です（タブ操作にブラウザが要る）',
+      })
+    }
+    if (v.fetchDayMode === 'url_template' && v.fetchMethod !== 'static') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['fetchDayMode'],
+        message: 'fetchDayMode=url_template は fetchMethod=static のみ対応です（ADR-0019）',
+      })
+    }
+    if (v.fetchDayMode !== 'single' && v.extractMethod !== 'text') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['fetchDayMode'],
+        message: '複数日取得は extractMethod=text のみ対応です（vision は月間画像に複数日を含む）',
+      })
+    }
+    if (v.fetchDayMode === 'url_template' && v.fetchDays < 1) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['fetchDays'],
+        message: 'url_template では fetchDays に1以上が必要です（0=タブ全件は tabs 専用）',
+      })
+    }
+    if (v.fetchDayMode === 'single' && v.fetchDays !== 1) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['fetchDays'],
+        message: 'fetchDayMode=single のとき fetchDays は 1 です',
+      })
+    }
+  })
 export type TheaterUpsert = z.infer<typeof TheaterUpsert>
 
 // 正規化済み screening（movie_id 解決・UTC 化済み）。D1 洗い替え書込の入力（docs/11 §4.1）。

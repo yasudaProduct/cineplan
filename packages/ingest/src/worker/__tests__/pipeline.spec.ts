@@ -16,6 +16,8 @@ const compliantTheater: TheaterRecord = {
   scheduleUrl: 'http://example.com/schedule',
   fetchMethod: 'static',
   extractMethod: 'vision',
+  fetchDayMode: 'single',
+  fetchDays: 1,
   officialUrl: 'http://example.com/',
   termsNote: null,
   termsCheckedAt: '2026-07-10T00:00:00Z',
@@ -30,6 +32,8 @@ const fetchRenderedMock = vi.fn()
 const sendSlackMock = vi.fn(async () => {})
 const extractVisionMock = vi.fn()
 const extractTextDaySplitMock = vi.fn()
+const extractPerDocumentMock = vi.fn()
+const fetchTemplateMock = vi.fn()
 
 vi.mock('../../db/theaters', () => ({ getTheater: getTheaterMock, listActiveTheaters: vi.fn() }))
 vi.mock('../../db/ingest-runs', () => ({
@@ -41,11 +45,14 @@ vi.mock('../../db/ingest-runs', () => ({
 vi.mock('../fetch', () => ({
   fetchSchedule: fetchScheduleMock,
   fetchRenderedSchedule: fetchRenderedMock,
+  fetchScheduleByDateTemplate: fetchTemplateMock,
 }))
 vi.mock('../notify', () => ({ sendSlack: sendSlackMock }))
 vi.mock('../extract', () => ({
   extractVisionWithRetries: extractVisionMock,
   extractTextDaySplit: extractTextDaySplitMock,
+  extractTextPerDocument: extractPerDocumentMock,
+  EXTRACTION_DEADLINE_MS: 10 * 60_000,
 }))
 vi.mock('../../db/movies', () => ({ resolveMovieId: vi.fn(async () => 'mov_1') }))
 vi.mock('../../db/screenings', () => ({ replaceScreeningsByDate: vi.fn(async () => 1) }))
@@ -178,5 +185,138 @@ describe('ingestTheater — rendered + text 分岐（P4-7）', () => {
     const r = await ingestTheater({ SNAPSHOTS: { put: vi.fn() } } as never, 'thr_test', 'manual')
     expect(r.status).toBe('extraction_failed')
     expect(r.error).toContain('スケジュール画像')
+  })
+})
+
+// ADR-0019: 複数日取得（tabs / url_template）
+describe('ingestTheater — 複数日取得（ADR-0019）', () => {
+  const okOutcome = {
+    ext: {
+      parsed: {},
+      raw: '',
+      model: 'stub:m',
+      promptVersion: 'text_v3',
+      inTokens: 2,
+      outTokens: 2,
+    },
+    result: {
+      businessDate: '2026-07-25',
+      screenings: [
+        {
+          date: '2026-07-25',
+          movieTitle: 'A',
+          startTime: '10:00',
+          endTime: null,
+          screenName: null,
+          format: null,
+          detailPath: null,
+        },
+      ],
+      notes: null,
+    },
+  }
+
+  it('tabs: 日別文書を _d{date}.html に保存し、extractTextPerDocument で抽出する', async () => {
+    getTheaterMock.mockResolvedValue({
+      ...compliantTheater,
+      fetchMethod: 'rendered',
+      extractMethod: 'text',
+      fetchDayMode: 'tabs',
+      fetchDays: 2,
+    })
+    fetchRenderedMock.mockResolvedValue({
+      scheduleHtml: '<table>day1</table>',
+      images: [],
+      fetchedAt: '2026-07-25T00:00:00.000Z',
+      days: [
+        { date: '2026-07-25', html: '<table>day1</table>', url: 'http://example.com/schedule' },
+        { date: '2026-07-26', html: '<table>day2</table>', url: 'http://example.com/schedule' },
+      ],
+      dayNotes: [],
+    })
+    extractPerDocumentMock.mockResolvedValue(okOutcome)
+    const put = vi.fn()
+    const r = await ingestTheater({ SNAPSHOTS: { put } } as never, 'thr_test', 'manual')
+    expect(r.status).toBe('succeeded')
+    // 既定文書 .html + 日別 _d{date}.html × 2
+    const keys = put.mock.calls.map((c) => String(c[0]))
+    expect(keys.filter((k) => k.endsWith('_d2026-07-25.html'))).toHaveLength(1)
+    expect(keys.filter((k) => k.endsWith('_d2026-07-26.html'))).toHaveLength(1)
+    expect(keys.filter((k) => /\/[^/]*\.html$/.test(k) && !k.includes('_d'))).toHaveLength(1)
+    // 日付発見コール経路（単日分割）ではなく文書ごとの抽出が呼ばれる
+    expect(extractPerDocumentMock).toHaveBeenCalledTimes(1)
+    expect(extractTextDaySplitMock).not.toHaveBeenCalled()
+    const docs = extractPerDocumentMock.mock.calls[0]?.[1] as Array<{ date: string; text: string }>
+    expect(docs.map((d) => d.date)).toEqual(['2026-07-25', '2026-07-26'])
+    // tabs でも rendered fetch に dayMode が渡る
+    expect(fetchRenderedMock.mock.calls[0]?.[2]).toMatchObject({ dayMode: 'tabs', days: 2 })
+  })
+
+  it('tabs でタブ0件（days 無し）なら従来の単日分割経路にフォールバックする', async () => {
+    getTheaterMock.mockResolvedValue({
+      ...compliantTheater,
+      fetchMethod: 'rendered',
+      extractMethod: 'text',
+      fetchDayMode: 'tabs',
+      fetchDays: 3,
+    })
+    fetchRenderedMock.mockResolvedValue({
+      scheduleHtml: '<table>only</table>',
+      images: [],
+      fetchedAt: '2026-07-25T00:00:00.000Z',
+    })
+    extractTextDaySplitMock.mockResolvedValue(okOutcome)
+    const r = await ingestTheater({ SNAPSHOTS: { put: vi.fn() } } as never, 'thr_test', 'manual')
+    expect(r.status).toBe('succeeded')
+    expect(extractTextDaySplitMock).toHaveBeenCalledTimes(1)
+    expect(extractPerDocumentMock).not.toHaveBeenCalled()
+  })
+
+  it('url_template: static でもブラウザを使わず日付ごとに取得する', async () => {
+    getTheaterMock.mockResolvedValue({
+      ...compliantTheater,
+      fetchMethod: 'static',
+      extractMethod: 'text',
+      scheduleUrl: 'http://example.com/s?d={date}',
+      fetchDayMode: 'url_template',
+      fetchDays: 2,
+    })
+    fetchTemplateMock.mockResolvedValue({
+      scheduleHtml: '<table>d1</table>',
+      images: [],
+      fetchedAt: '2026-07-25T00:00:00.000Z',
+      days: [
+        { date: '2026-07-25', html: '<table>d1</table>', url: 'http://example.com/s?d=2026-07-25' },
+        { date: '2026-07-26', html: '<table>d2</table>', url: 'http://example.com/s?d=2026-07-26' },
+      ],
+      dayNotes: [],
+    })
+    extractPerDocumentMock.mockResolvedValue(okOutcome)
+    const r = await ingestTheater({ SNAPSHOTS: { put: vi.fn() } } as never, 'thr_test', 'manual')
+    expect(r.status).toBe('succeeded')
+    expect(fetchTemplateMock).toHaveBeenCalledTimes(1)
+    expect(fetchScheduleMock).not.toHaveBeenCalled()
+    expect(fetchRenderedMock).not.toHaveBeenCalled()
+  })
+
+  it('tabs なのに fetchMethod=static の不正設定は single に縮退する（手書きSQL対策）', async () => {
+    getTheaterMock.mockResolvedValue({
+      ...compliantTheater,
+      fetchMethod: 'static',
+      extractMethod: 'text',
+      fetchDayMode: 'tabs',
+      fetchDays: 3,
+    })
+    fetchScheduleMock.mockResolvedValue({
+      scheduleHtml: '<table>x</table>',
+      images: [],
+      fetchedAt: '2026-07-25T00:00:00.000Z',
+    })
+    extractTextDaySplitMock.mockResolvedValue(okOutcome)
+    const r = await ingestTheater({ SNAPSHOTS: { put: vi.fn() } } as never, 'thr_test', 'manual')
+    expect(r.status).toBe('succeeded')
+    expect(fetchScheduleMock).toHaveBeenCalledTimes(1)
+    expect(fetchRenderedMock).not.toHaveBeenCalled()
+    expect(fetchTemplateMock).not.toHaveBeenCalled()
   })
 })

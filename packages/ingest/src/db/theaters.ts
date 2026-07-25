@@ -17,6 +17,8 @@ interface TheaterRow {
   schedule_url: string
   fetch_method: string
   extract_method: string
+  fetch_day_mode: string
+  fetch_days: number
   official_url: string
   terms_note: string | null
   terms_checked_at: string | null
@@ -24,7 +26,7 @@ interface TheaterRow {
 }
 
 const COLS =
-  'id,name,short_name,status,lat,lng,nearest_station,walk_min_from_sta,schedule_url,fetch_method,extract_method,official_url,terms_note,terms_checked_at,robots_status'
+  'id,name,short_name,status,lat,lng,nearest_station,walk_min_from_sta,schedule_url,fetch_method,extract_method,fetch_day_mode,fetch_days,official_url,terms_note,terms_checked_at,robots_status'
 
 function toRecord(row: TheaterRow): TheaterRecordT {
   // snake_case(D1) → camelCase(shared)。zod で値域も検証。
@@ -40,6 +42,8 @@ function toRecord(row: TheaterRow): TheaterRecordT {
     scheduleUrl: row.schedule_url,
     fetchMethod: row.fetch_method,
     extractMethod: row.extract_method,
+    fetchDayMode: row.fetch_day_mode,
+    fetchDays: row.fetch_days,
     officialUrl: row.official_url,
     termsNote: row.terms_note,
     termsCheckedAt: row.terms_checked_at,
@@ -84,9 +88,10 @@ export async function createTheater(db: D1Database, input: TheaterUpsertT): Prom
   await db
     .prepare(
       `INSERT INTO theaters (id,name,short_name,status,lat,lng,nearest_station,
-         walk_min_from_sta,schedule_url,fetch_method,extract_method,official_url,
+         walk_min_from_sta,schedule_url,fetch_method,extract_method,
+         fetch_day_mode,fetch_days,official_url,
          terms_note,terms_checked_at,robots_status)
-       VALUES (?,?,?,'paused',?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,'paused',?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
     .bind(
       id,
@@ -99,6 +104,8 @@ export async function createTheater(db: D1Database, input: TheaterUpsertT): Prom
       input.scheduleUrl,
       input.fetchMethod,
       input.extractMethod,
+      input.fetchDayMode,
+      input.fetchDays,
       input.officialUrl,
       input.termsNote ?? null,
       input.termsCheckedAt ?? null,
@@ -118,6 +125,7 @@ export async function updateTheater(
     .prepare(
       `UPDATE theaters SET name=?, short_name=?, lat=?, lng=?, nearest_station=?,
          walk_min_from_sta=?, schedule_url=?, fetch_method=?, extract_method=?,
+         fetch_day_mode=?, fetch_days=?,
          official_url=?, terms_note=?, terms_checked_at=?, robots_status=?
        WHERE id=?`,
     )
@@ -131,6 +139,8 @@ export async function updateTheater(
       input.scheduleUrl,
       input.fetchMethod,
       input.extractMethod,
+      input.fetchDayMode,
+      input.fetchDays,
       input.officialUrl,
       input.termsNote ?? null,
       input.termsCheckedAt ?? null,

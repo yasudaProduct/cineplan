@@ -230,36 +230,7 @@ export async function extractTextDaySplit(
   const systemPrompt = buildTextV3SystemPrompt(businessMonth)
   const notes: string[] = []
   const outcomes: ExtractOutcome[] = []
-
-  // 呼出前デッドライン判定（リトライ試行ごとに評価。予算は消費しない）
-  const guarded =
-    (progress: { done: number; total: number | null }, run: () => Promise<ExtractOutcome>) =>
-    async (): Promise<ExtractOutcome> => {
-      const elapsedMs = now() - startedAt
-      if (elapsedMs >= deadlineMs) {
-        const err = new ExtractionDeadlineError(
-          `抽出デッドライン超過(text_v2日分割): ${Math.round(elapsedMs / 60_000)}分経過・${progress.done}/${progress.total ?? '?'}日処理済み`,
-        )
-        logError('extract.deadline.exceeded', err, {
-          elapsedMs,
-          deadlineMs,
-          doneDays: progress.done,
-          totalDays: progress.total,
-        })
-        throw err
-      }
-      return run()
-    }
-
-  // エラーにどの呼出で失敗したかを前置（D1 error_message 単体で読めるように。デッドラインは素通し）
-  const withCallContext = async <T>(ctx: string, p: Promise<T>): Promise<T> => {
-    try {
-      return await p
-    } catch (e) {
-      if (e instanceof ExtractionDeadlineError) throw e
-      throw new Error(`${ctx}: ${e instanceof Error ? e.message : String(e)}`)
-    }
-  }
+  const guarded = createDeadlineGuard(now, startedAt, deadlineMs, 'text_v3日分割')
 
   // 1) 日付発見コール
   const t0 = now()
@@ -304,58 +275,193 @@ export async function extractTextDaySplit(
     notes.push('営業日をページから検出できず上映0件(text_v3日分割)')
   }
 
-  // 2) 日別抽出コール（発見した日付ごとに1回。対象日外の行は除外し notes に記録）
+  // 2) 日別抽出コール（発見した日付ごとに1回。入力は同一テキスト・基準日は取込日のまま）
+  const screenings = await extractDayUnits(
+    env,
+    dates.map((date) => ({ date, text: preprocessedText, url: scheduleUrl })),
+    {
+      systemPrompt,
+      businessMonth,
+      basisDateOf: () => fallbackBusinessDate,
+      label: 'text_v3日分割',
+    },
+    { guarded, now, notes, outcomes, onDeadline: 'throw' },
+  )
+  return mergeDayResults(fallbackBusinessDate, screenings, notes, outcomes)
+}
+
+// 複数日取得（ADR-0019・docs/06 §2.2）の抽出。文書ごとに日付が既知のため
+// **日付発見コールを行わず**、文書1つにつき日別コールを1回だけ呼ぶ。
+// text_v3 の日別プロンプトに基準日として対象日そのものを渡すのがキモ:
+// 「対象日 == 基準日 のとき、日付見出しの無い先頭ブロックも対象日の分として抽出」という
+// 既存の規則がそのまま効き、1日分だけを載せたタブ文書が正しく抽出される（プロンプト新版は不要）。
+export interface DayDocument {
+  date: string // YYYY-MM-DD
+  text: string // htmlToText 済み
+  url: string // プロンプトの <page url=...>
+}
+
+export async function extractTextPerDocument(
+  env: LlmEnv,
+  docs: DayDocument[],
+  businessMonth: string,
+  fallbackBusinessDate: string,
+  opts?: DaySplitOptions & { extraNotes?: string[] },
+): Promise<ExtractWithRetriesResult> {
+  const now = opts?.now ?? (() => Date.now())
+  const deadlineMs = opts?.deadlineMs ?? EXTRACTION_DEADLINE_MS
+  const startedAt = now()
+  const systemPrompt = buildTextV3SystemPrompt(businessMonth)
+  const notes: string[] = [...(opts?.extraNotes ?? [])]
+  const outcomes: ExtractOutcome[] = []
+  const guarded = createDeadlineGuard(now, startedAt, deadlineMs, '複数日取得')
+
+  logInfo('extract.perdoc.start', { docs: docs.length, dates: docs.map((d) => d.date) })
+  if (docs.length === 0) {
+    // 取得できた日が無い（タブを全て取り逃した等）。LLM は呼ばず 0件 + notes で成功させる
+    notes.push('複数日取得で有効な文書が0件のため上映0件(ADR-0019)')
+    return mergeDayResults(fallbackBusinessDate, [], notes, [])
+  }
+
+  const screenings = await extractDayUnits(
+    env,
+    docs,
+    { systemPrompt, businessMonth, basisDateOf: (date) => date, label: '複数日取得' },
+    { guarded, now, notes, outcomes, onDeadline: 'stop' },
+  )
+  return mergeDayResults(fallbackBusinessDate, screenings, notes, outcomes)
+}
+
+// --- 日分割・複数日取得の共通下回り ---
+
+type DeadlineGuard = (
+  progress: { done: number; total: number | null },
+  run: () => Promise<ExtractOutcome>,
+) => () => Promise<ExtractOutcome>
+
+// 呼出前デッドライン判定（リトライ試行ごとに評価。予算は消費しない）
+function createDeadlineGuard(
+  now: () => number,
+  startedAt: number,
+  deadlineMs: number,
+  label: string,
+): DeadlineGuard {
+  return (progress, run) => async () => {
+    const elapsedMs = now() - startedAt
+    if (elapsedMs >= deadlineMs) {
+      const err = new ExtractionDeadlineError(
+        `抽出デッドライン超過(${label}): ${Math.round(elapsedMs / 60_000)}分経過・${progress.done}/${progress.total ?? '?'}日処理済み`,
+      )
+      logError('extract.deadline.exceeded', err, {
+        elapsedMs,
+        deadlineMs,
+        doneDays: progress.done,
+        totalDays: progress.total,
+      })
+      throw err
+    }
+    return run()
+  }
+}
+
+// エラーにどの呼出で失敗したかを前置（D1 error_message 単体で読めるように。デッドラインは素通し）
+async function withCallContext<T>(ctx: string, p: Promise<T>): Promise<T> {
+  try {
+    return await p
+  } catch (e) {
+    if (e instanceof ExtractionDeadlineError) throw e
+    throw new Error(`${ctx}: ${e instanceof Error ? e.message : String(e)}`)
+  }
+}
+
+// 日別コールのループ（単日分割・複数日取得で共用）。対象日外の行は除外し notes に記録する。
+// onDeadline='stop' は「1日以上成功していれば打ち切って部分結果を返す」（複数日取得。ADR-0019）。
+async function extractDayUnits(
+  env: LlmEnv,
+  units: DayDocument[],
+  prompt: {
+    systemPrompt: string
+    businessMonth: string
+    basisDateOf: (date: string) => string
+    label: string
+  },
+  ctx: {
+    guarded: DeadlineGuard
+    now: () => number
+    notes: string[]
+    outcomes: ExtractOutcome[]
+    onDeadline: 'throw' | 'stop'
+  },
+): Promise<ExtractionResult['screenings']> {
   const screenings: ExtractionResult['screenings'] = []
-  for (const [i, date] of dates.entries()) {
-    const t = now()
-    const day = await withCallContext(
-      `日別抽出(${date})`,
-      withRetries(
-        guarded({ done: i, total: dates.length }, () =>
-          extractOnce(
-            env,
-            {
-              systemPrompt,
-              userText: buildTextV3UserTextForDay(
-                scheduleUrl,
-                businessMonth,
-                fallbackBusinessDate,
-                preprocessedText,
-                date,
-              ),
-            },
-            TEXT_V3_VERSION,
+  for (const [i, unit] of units.entries()) {
+    const t = ctx.now()
+    let day: { ext: ExtractOutcome; result: ExtractionResult }
+    try {
+      day = await withCallContext(
+        `日別抽出(${unit.date})`,
+        withRetries(
+          ctx.guarded({ done: i, total: units.length }, () =>
+            extractOnce(
+              env,
+              {
+                systemPrompt: prompt.systemPrompt,
+                userText: buildTextV3UserTextForDay(
+                  unit.url,
+                  prompt.businessMonth,
+                  prompt.basisDateOf(unit.date),
+                  unit.text,
+                  unit.date,
+                ),
+              },
+              TEXT_V3_VERSION,
+            ),
           ),
+          parseExtraction,
         ),
-        parseExtraction,
-      ),
-    )
-    outcomes.push(day.ext)
-    const kept = day.result.screenings.filter((sc) => sc.date == null || sc.date === date)
+      )
+    } catch (e) {
+      // 部分成功を許す経路のみ、1日以上取れていればそこで打ち切る（未取得日は洗い替え範囲外）
+      if (e instanceof ExtractionDeadlineError && ctx.onDeadline === 'stop' && i > 0) {
+        ctx.notes.push(`デッドライン到達により${i}/${units.length}日で打ち切り(${prompt.label})`)
+        break
+      }
+      throw e
+    }
+    ctx.outcomes.push(day.ext)
+    const kept = day.result.screenings.filter((sc) => sc.date == null || sc.date === unit.date)
     const dropped = day.result.screenings.length - kept.length
-    if (dropped > 0) notes.push(`${date}: 対象日外${dropped}件を除外(text_v3日分割)`)
-    if (day.result.notes) notes.push(`${date}: ${day.result.notes}`)
-    screenings.push(...kept.map((sc) => ({ ...sc, date })))
+    if (dropped > 0) ctx.notes.push(`${unit.date}: 対象日外${dropped}件を除外(${prompt.label})`)
+    if (day.result.notes) ctx.notes.push(`${unit.date}: ${day.result.notes}`)
+    screenings.push(...kept.map((sc) => ({ ...sc, date: unit.date })))
     logInfo('extract.day.ok', {
-      date,
+      date: unit.date,
       screenings: kept.length,
       droppedOffDate: dropped,
-      ms: now() - t,
+      ms: ctx.now() - t,
       inTokens: day.ext.inTokens,
       outTokens: day.ext.outTokens,
     })
   }
+  return screenings
+}
 
+// 全日の結果を1つの ExtractionResult にまとめ、トークンを合算する（呼出側の契約は一括抽出と同一）。
+function mergeDayResults(
+  fallbackBusinessDate: string,
+  screenings: ExtractionResult['screenings'],
+  notes: string[],
+  outcomes: ExtractOutcome[],
+): ExtractWithRetriesResult {
   const result: ExtractionResult = {
     businessDate: fallbackBusinessDate,
     screenings,
     notes: notes.length > 0 ? notes.join(' / ').slice(0, 1000) : null,
   }
-  const last = outcomes[outcomes.length - 1]
   const ext: ExtractOutcome = {
     parsed: result,
     raw: '', // マージ結果のため単一の生出力は無い（各呼出の生出力サイズは llm.call.ok に記録済み）
-    model: last.model,
+    model: outcomes[outcomes.length - 1]?.model ?? '',
     promptVersion: TEXT_V3_VERSION,
     inTokens: sumTokens(outcomes.map((o) => o.inTokens)),
     outTokens: sumTokens(outcomes.map((o) => o.outTokens)),

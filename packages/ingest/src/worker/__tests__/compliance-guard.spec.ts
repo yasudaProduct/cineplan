@@ -17,6 +17,8 @@ const baseTheater: TheaterRecord = {
   scheduleUrl: 'http://example.com/schedule',
   fetchMethod: 'static',
   extractMethod: 'vision',
+  fetchDayMode: 'single',
+  fetchDays: 1,
   officialUrl: 'http://example.com/',
   termsNote: null,
   termsCheckedAt: '2026-07-10T00:00:00Z',

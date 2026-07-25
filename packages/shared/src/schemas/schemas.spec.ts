@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ExtractedDateList, ExtractedScreening } from './extraction'
+import { TheaterUpsert } from './ingest'
 import { HHMM } from './plan'
 
 // review指摘#6の回帰テスト: 時刻の分に 00-59 制約が無いと、LLM の幻覚や不正入力
@@ -68,5 +69,101 @@ describe('PlanRequest の HHMM（時00〜23・分00〜59・24時超え不可。d
 
   it('1桁時は拒否する（API 入力は常に2桁固定。docs/04 example "09:00"）', () => {
     expect(valid('9:00')).toBe(false)
+  })
+})
+
+// 複数日取得（ADR-0019）の組合せ検証。手書き設定でも矛盾した状態を作らせない。
+describe('TheaterUpsert の複数日取得の組合せ検証（ADR-0019）', () => {
+  const base = {
+    name: 'T',
+    shortName: null,
+    lat: '34.7',
+    lng: '135.5',
+    nearestStation: '梅田',
+    walkMinFromSta: '5',
+    scheduleUrl: 'http://example.com/s',
+    fetchMethod: 'static' as const,
+    extractMethod: 'text' as const,
+    fetchDayMode: 'single' as const,
+    fetchDays: '1',
+    officialUrl: 'http://example.com/',
+    termsNote: null,
+    termsCheckedAt: null,
+    robotsStatus: 'allowed' as const,
+  }
+  const parse = (over: Record<string, unknown>) => TheaterUpsert.safeParse({ ...base, ...over })
+
+  it('既定（single / 1）は通る', () => {
+    expect(parse({}).success).toBe(true)
+  })
+
+  it('tabs は fetchMethod=rendered が必須', () => {
+    expect(parse({ fetchDayMode: 'tabs', fetchDays: '3' }).success).toBe(false)
+    expect(parse({ fetchDayMode: 'tabs', fetchDays: '3', fetchMethod: 'rendered' }).success).toBe(
+      true,
+    )
+  })
+
+  it('tabs は fetchDays=0（タブ全件）を許容する', () => {
+    expect(parse({ fetchDayMode: 'tabs', fetchDays: '0', fetchMethod: 'rendered' }).success).toBe(
+      true,
+    )
+  })
+
+  it('url_template は {date} と static が必須', () => {
+    expect(parse({ fetchDayMode: 'url_template', fetchDays: '3' }).success).toBe(false) // {date} なし
+    expect(
+      parse({
+        fetchDayMode: 'url_template',
+        fetchDays: '3',
+        scheduleUrl: 'http://example.com/s?d={date}',
+      }).success,
+    ).toBe(true)
+    expect(
+      parse({
+        fetchDayMode: 'url_template',
+        fetchDays: '3',
+        fetchMethod: 'rendered',
+        scheduleUrl: 'http://example.com/s?d={date}',
+      }).success,
+    ).toBe(false) // rendered は非対応
+  })
+
+  it('{date} を含む URL は url_template 以外では拒否する', () => {
+    expect(parse({ scheduleUrl: 'http://example.com/s?d={date}' }).success).toBe(false)
+  })
+
+  it('url_template は fetchDays=0 を拒否する（タブ全件は tabs 専用）', () => {
+    expect(
+      parse({
+        fetchDayMode: 'url_template',
+        fetchDays: '0',
+        scheduleUrl: 'http://example.com/s?d={date}',
+      }).success,
+    ).toBe(false)
+  })
+
+  it('複数日取得は extractMethod=text のみ', () => {
+    expect(
+      parse({
+        fetchDayMode: 'tabs',
+        fetchDays: '3',
+        fetchMethod: 'rendered',
+        extractMethod: 'vision',
+      }).success,
+    ).toBe(false)
+  })
+
+  it('single のとき fetchDays は 1 でなければならない', () => {
+    expect(parse({ fetchDays: '3' }).success).toBe(false)
+  })
+
+  it('fetchDays は上限10（MAX_FETCH_DAYS）を超えられない', () => {
+    expect(parse({ fetchDayMode: 'tabs', fetchDays: '11', fetchMethod: 'rendered' }).success).toBe(
+      false,
+    )
+    expect(parse({ fetchDayMode: 'tabs', fetchDays: '10', fetchMethod: 'rendered' }).success).toBe(
+      true,
+    )
   })
 })

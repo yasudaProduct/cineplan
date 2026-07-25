@@ -128,6 +128,8 @@ async function parseTheaterForm(c: { req: { formData: () => Promise<FormData> } 
     scheduleUrl: s('scheduleUrl'),
     fetchMethod: s('fetchMethod'),
     extractMethod: s('extractMethod'),
+    fetchDayMode: s('fetchDayMode'),
+    fetchDays: s('fetchDays'),
     officialUrl: s('officialUrl'),
     termsNote: s('termsNote') || null,
     termsCheckedAt: date ? `${date}T00:00:00.000Z` : null,
