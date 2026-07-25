@@ -36,12 +36,19 @@ describe('fetchScheduleByDateTemplate', () => {
 
   const okRes = (body: string) => new Response(body, { status: 200 })
 
-  // sleep(5s) を含むため、タイマーを進めながら解決させる
+  // sleep(5s) を含むため、タイマーを進めながら解決させる。
+  // 拒否ハンドラを生成直後に付けるのが要点: タイマーを進める間に reject されると
+  // ハンドラ未装着扱いになり unhandled rejection として CI が失敗する。
   const runWithFakeTimers = async <T>(p: () => Promise<T>): Promise<T> => {
     vi.useFakeTimers()
-    const promise = p()
+    const settled = p().then(
+      (value) => ({ ok: true as const, value }),
+      (error: unknown) => ({ ok: false as const, error }),
+    )
     await vi.runAllTimersAsync()
-    return promise
+    const result = await settled
+    if (!result.ok) throw result.error
+    return result.value
   }
 
   it('{date} を展開して日付ごとに取得し、days[] を返す', async () => {
