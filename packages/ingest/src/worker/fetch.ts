@@ -139,25 +139,49 @@ export async function fetchRenderedSchedule(
       return { scheduleHtml: firstHtml, images: [], fetchedAt }
     }
 
+    // 同一オリジンの XHR/fetch レスポンス数を数え、「タブ操作で実際に AJAX が飛んだか」を
+    // 本文変化とは独立に判定する。**内容が前日と同一の日を取りこぼさないための要**:
+    // シネコンの平日（月火水など）は編成が完全に同一になることがあり、本文テキストの
+    // 変化だけを見ると「AJAX 未着」と区別できない（実測: T・ジョイ梅田で 7/28・7/29 を
+    // 誤って捨てた。ADR-0019・docs/06 §2.2）。第三者（広告・計測）は host 一致で除外する。
+    const pageHost = new URL(scheduleUrl).host
+    let sameOriginXhr = 0
+    page.on('response', (res) => {
+      try {
+        const type = res.request().resourceType()
+        if ((type === 'xhr' || type === 'fetch') && new URL(res.url()).host === pageHost) {
+          sameOriginXhr++
+        }
+      } catch {
+        // URL が解釈できないレスポンスは無視する
+      }
+    })
+
     const days: FetchedDay[] = []
     const dayNotes: string[] = []
     for (const [i, date] of dates.entries()) {
       await sleep(HOST_INTERVAL_MS) // 同一ホスト5秒間隔（docs/08 §0・§3。タブ操作も対象）
       const before = await page.evaluate(readContentSignatureInPage)
+      const xhrBefore = sameOriginXhr
       const clicked = await page.evaluate(clickDateTabInPage, date)
       if (!clicked) {
         dayNotes.push(`${date}: 日付タブが見つからず未取得`)
         logInfo('fetch.tabs.click_missed', { date })
         continue
       }
-      // AJAX 到着待ち: networkidle は best-effort、確証は本文テキストの変化で取る
+      // AJAX 到着待ち: networkidle は best-effort、確証は本文変化 or 同一オリジン XHR で取る
       await page.waitForNetworkIdle({ idleTime: 500, timeout: TAB_WAIT_MS }).catch(() => {})
       const changed = await waitForContentChange(page, before)
-      if (!changed && i > 0) {
-        // 前日の DOM を別日として書き込まないため、この日は捨てる（docs/06 §2.2）
-        dayNotes.push(`${date}: 内容が変化せず未取得`)
-        logInfo('fetch.tabs.unchanged', { date })
+      const xhrFired = sameOriginXhr > xhrBefore
+      if (!changed && !xhrFired && i > 0) {
+        // クリックが何も起こさなかった。前日の DOM を別日として書き込まないため捨てる
+        dayNotes.push(`${date}: 内容が変化せずAJAXも発生しないため未取得`)
+        logInfo('fetch.tabs.unchanged', { date, xhrFired })
         continue
+      }
+      if (!changed && xhrFired) {
+        // AJAX は飛んだが本文が同一 = 前日と編成が同じ日。正当なデータとして採用する
+        logInfo('fetch.tabs.same_content', { date })
       }
       days.push({ date, html: await page.content(), url: scheduleUrl })
     }
