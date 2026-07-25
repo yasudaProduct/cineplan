@@ -1,10 +1,25 @@
 // P1-1 Fetch。取得マナー（docs/08 §3）: 正直UA・同一ホスト5秒間隔・30sタイムアウト・偽装しない。
 // vision 劇場は schedule ページ HTML から画像URLを抽出し、画像も取得する。
+// 複数日取得（tabs / url_template。ADR-0019・docs/06 §2.2）も同じマナーで直列に行う。
+
+import type { FetchDayMode } from '@cinema/shared'
+import { logInfo } from '../log'
+import {
+  clickDateTabInPage,
+  collectDateTabsInPage,
+  enumerateFetchDates,
+  readContentSignatureInPage,
+  resolveDateUrl,
+  selectFetchDates,
+} from './date-tabs'
 
 // UA は正直に名乗る（docs/08 §3）。<domain> はドメイン確定（P5）まで暫定。
 export const USER_AGENT = 'CinemaHashigoBot/0.1 (+https://example.com/bot)'
 const TIMEOUT_MS = 30_000
 const HOST_INTERVAL_MS = 5_000
+// タブクリック後に内容（本文テキスト）が変化するまでの待機上限とポーリング間隔
+const TAB_WAIT_MS = 10_000
+const TAB_POLL_MS = 250
 
 export interface FetchedImage {
   url: string
@@ -13,10 +28,19 @@ export interface FetchedImage {
   lastModified: string | null
 }
 
+// 複数日取得（ADR-0019）で得た1日分の文書
+export interface FetchedDay {
+  date: string // YYYY-MM-DD
+  html: string
+  url: string // 実際に取得した URL（url_template は日付展開後）
+}
+
 export interface FetchedSchedule {
-  scheduleHtml: string
+  scheduleHtml: string // 既定文書（複数日取得時は days[0].html）。従来の読み手はそのまま動く
   images: FetchedImage[]
   fetchedAt: string // UTC ISO
+  days?: FetchedDay[] // 複数日取得時のみ（1件以上）。single・タブ0件検出時は undefined
+  dayNotes?: string[] // 取り逃した日・変化未確認などの記録（抽出結果の notes に反映）
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
@@ -75,12 +99,21 @@ export async function fetchSchedule(theater: FetchTarget): Promise<FetchedSchedu
   return { scheduleHtml, images, fetchedAt }
 }
 
+export interface RenderedFetchOptions {
+  dayMode?: FetchDayMode // 既定 'single'
+  days?: number // 0 = 検出タブ全件
+  businessDate?: string // JST 当日。取得対象日の下限（過去日を取らない）
+}
+
 // rendered 取得（P4-7・docs/06 §2.0）。Browser Rendering で JS 描画後の DOM を取得する。
-// 1回の取込 = 1回のページロード（取得マナーは static と同じ）。画像は取得しない（text 抽出前提）。
+// 既定（dayMode='single'）は 1回の取込 = 1回のページロード。dayMode='tabs' は同一ページ上で
+// 日付タブを5秒間隔・直列にクリックし、日付ごとの DOM を集める（ADR-0019・docs/06 §2.2）。
+// 取得マナーは static と同じ。画像は取得しない（text 抽出前提）。
 // puppeteer は動的 import（vitest の Node 環境で workers 専用依存を読み込まないため）。
 export async function fetchRenderedSchedule(
   browser: import('@cloudflare/puppeteer').BrowserWorker,
   scheduleUrl: string,
+  opts?: RenderedFetchOptions,
 ): Promise<FetchedSchedule> {
   const fetchedAt = new Date().toISOString()
   const puppeteer = (await import('@cloudflare/puppeteer')).default
@@ -92,9 +125,99 @@ export async function fetchRenderedSchedule(
     if (res && !res.ok() && res.status() !== 304) {
       throw new Error(`HTTP ${res.status()} for ${scheduleUrl}`)
     }
-    const scheduleHtml = await page.content() // 描画後 DOM
-    return { scheduleHtml, images: [], fetchedAt }
+    const firstHtml = await page.content() // 描画後 DOM
+    if (opts?.dayMode !== 'tabs') return { scheduleHtml: firstHtml, images: [], fetchedAt }
+
+    // 日付タブを検出（構造非依存。値が YYYY-MM-DD の属性を属性名非依存で収集）
+    const businessDate = opts.businessDate ?? fetchedAt.slice(0, 10)
+    const found = await page.evaluate(collectDateTabsInPage)
+    const dates = selectFetchDates(found, opts.days ?? 1, businessDate)
+    logInfo('fetch.tabs.found', { found: found.length, targets: dates.length, dates })
+    if (dates.length === 0) {
+      // タブが無い（または全て過去日）サイトは single と同じ挙動に自動フォールバックする
+      logInfo('fetch.tabs.none', { found: found.length })
+      return { scheduleHtml: firstHtml, images: [], fetchedAt }
+    }
+
+    const days: FetchedDay[] = []
+    const dayNotes: string[] = []
+    for (const [i, date] of dates.entries()) {
+      await sleep(HOST_INTERVAL_MS) // 同一ホスト5秒間隔（docs/08 §0・§3。タブ操作も対象）
+      const before = await page.evaluate(readContentSignatureInPage)
+      const clicked = await page.evaluate(clickDateTabInPage, date)
+      if (!clicked) {
+        dayNotes.push(`${date}: 日付タブが見つからず未取得`)
+        logInfo('fetch.tabs.click_missed', { date })
+        continue
+      }
+      // AJAX 到着待ち: networkidle は best-effort、確証は本文テキストの変化で取る
+      await page.waitForNetworkIdle({ idleTime: 500, timeout: TAB_WAIT_MS }).catch(() => {})
+      const changed = await waitForContentChange(page, before)
+      if (!changed && i > 0) {
+        // 前日の DOM を別日として書き込まないため、この日は捨てる（docs/06 §2.2）
+        dayNotes.push(`${date}: 内容が変化せず未取得`)
+        logInfo('fetch.tabs.unchanged', { date })
+        continue
+      }
+      days.push({ date, html: await page.content(), url: scheduleUrl })
+    }
+    return {
+      scheduleHtml: days[0]?.html ?? firstHtml,
+      images: [],
+      fetchedAt,
+      days: days.length > 0 ? days : undefined,
+      dayNotes,
+    }
   } finally {
     await instance.close()
   }
+}
+
+// 本文テキストのシグネチャが before から変化し、かつ1周期分安定するまで待つ。
+type SignaturePage = { evaluate: (fn: () => string) => Promise<string> }
+async function waitForContentChange(page: SignaturePage, before: string): Promise<boolean> {
+  const deadline = Date.now() + TAB_WAIT_MS
+  let last: string | null = null
+  while (Date.now() < deadline) {
+    const now = await page.evaluate(readContentSignatureInPage)
+    if (now !== before) {
+      if (last === now) return true // 変化後に安定した（描画途中を掴まない）
+      last = now
+    }
+    await sleep(TAB_POLL_MS)
+  }
+  return false
+}
+
+// url_template 取得（ADR-0019）。schedule_url の {date} を置換して日付ごとに静的取得する。
+// ブラウザは使わない。初日の失敗は throw（URL 設定ミスを黙って通さない）、
+// 2日目以降の失敗はその日をスキップして dayNotes に記録する（未掲載日が404を返す等は正常）。
+export interface DateTemplateTarget {
+  scheduleUrl: string // {date} を含む
+  businessDate: string // JST 当日
+  days: number // 1..MAX_FETCH_DAYS
+}
+
+export async function fetchScheduleByDateTemplate(
+  target: DateTemplateTarget,
+): Promise<FetchedSchedule> {
+  const fetchedAt = new Date().toISOString()
+  const dates = enumerateFetchDates(target.businessDate, target.days)
+  const days: FetchedDay[] = []
+  const dayNotes: string[] = []
+  for (const [i, date] of dates.entries()) {
+    if (i > 0) await sleep(HOST_INTERVAL_MS) // 同一ホスト5秒間隔（docs/08 §0・§3）
+    const url = resolveDateUrl(target.scheduleUrl, date)
+    try {
+      const res = await fetchWithUA(url)
+      days.push({ date, html: await res.text(), url })
+    } catch (e) {
+      if (i === 0) throw e // 初日が取れない = 設定ミスの可能性が高いので fetch_failed にする
+      dayNotes.push(`${date}: 取得失敗のため未取得（${(e as Error).message}）`)
+      logInfo('fetch.template.skip', { date, url, error: (e as Error).message })
+    }
+  }
+  const first = days[0]
+  if (!first) throw new Error(`url_template で取得できた日がありません（${target.scheduleUrl}）`)
+  return { scheduleHtml: first.html, images: [], fetchedAt, days, dayNotes }
 }
