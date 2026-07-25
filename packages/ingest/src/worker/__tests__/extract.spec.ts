@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   extractTextDaySplit,
+  extractTextPerDocument,
   extractTextWithRetries,
   extractVisionWithRetries,
   MAX_DATES,
@@ -295,5 +296,146 @@ describe('extractTextDaySplit', () => {
     ).rejects.toThrow(/デッドライン超過.*1\/2日処理済み/)
     // 発見(t:0→400) + 1日目(t:400→800) の2呼出のみ。2日目は呼出前判定で打ち切り（リトライもされない）
     expect(extractMock).toHaveBeenCalledTimes(2)
+  })
+})
+
+// 複数日取得の抽出（ADR-0019）: 文書ごとに日付が既知なので日付発見コールを行わない
+describe('extractTextPerDocument', () => {
+  const dayResult = (date: string, titles: string[], notes: string | null = null) =>
+    okResponse({
+      businessDate: date,
+      screenings: titles.map((movieTitle) => ({ movieTitle, startTime: '10:00' })),
+      notes,
+    })
+
+  const docs = (dates: string[]) =>
+    dates.map((date) => ({ date, text: `<t>${date}</t>`, url: 'http://e.com/s' }))
+
+  it('文書数と同じ回数だけ LLM を呼ぶ（日付発見コールが無い）', async () => {
+    extractMock
+      .mockResolvedValueOnce(dayResult('2026-07-25', ['A', 'B']))
+      .mockResolvedValueOnce(dayResult('2026-07-26', ['C']))
+      .mockResolvedValueOnce(dayResult('2026-07-27', ['D']))
+    const { ext, result } = await extractTextPerDocument(
+      {},
+      docs(['2026-07-25', '2026-07-26', '2026-07-27']),
+      '2026-07',
+      '2026-07-25',
+    )
+    expect(extractMock).toHaveBeenCalledTimes(3) // 単日分割の 1+N ではなく N
+    expect(result.screenings.map((s) => [s.date, s.movieTitle])).toEqual([
+      ['2026-07-25', 'A'],
+      ['2026-07-25', 'B'],
+      ['2026-07-26', 'C'],
+      ['2026-07-27', 'D'],
+    ])
+    expect(ext.promptVersion).toBe('text_v3')
+    expect(ext.inTokens).toBe(3)
+    expect(ext.outTokens).toBe(3)
+  })
+
+  it('基準日に対象日そのものを渡す（日付見出しの無い当日ブロックを拾わせるため）', async () => {
+    extractMock.mockResolvedValueOnce(dayResult('2026-07-26', ['A']))
+    await extractTextPerDocument({}, docs(['2026-07-26']), '2026-07', '2026-07-25')
+    const input = extractMock.mock.calls[0]?.[0] as { userText: string; responseFormat?: string }
+    expect(input.responseFormat).toBeUndefined() // dateList ではない
+    expect(input.userText).toContain('businessDate="2026-07-26"') // 基準日 = 対象日
+    expect(input.userText).toContain('対象日 2026-07-26')
+  })
+
+  it('対象日外の行は除外し notes に記録する', async () => {
+    extractMock.mockResolvedValueOnce(
+      okResponse({
+        businessDate: '2026-07-25',
+        screenings: [
+          { movieTitle: 'A', startTime: '10:00', date: null },
+          { movieTitle: 'B', startTime: '12:00', date: '2026-07-26' },
+        ],
+        notes: null,
+      }),
+    )
+    const { result } = await extractTextPerDocument(
+      {},
+      docs(['2026-07-25']),
+      '2026-07',
+      '2026-07-25',
+    )
+    expect(result.screenings.map((s) => s.movieTitle)).toEqual(['A'])
+    expect(result.notes).toContain('対象日外1件を除外')
+  })
+
+  it('文書が0件なら LLM を呼ばず 0件+notes で成功する', async () => {
+    const { result } = await extractTextPerDocument({}, [], '2026-07', '2026-07-25')
+    expect(extractMock).not.toHaveBeenCalled()
+    expect(result.screenings).toEqual([])
+    expect(result.businessDate).toBe('2026-07-25')
+    expect(result.notes).toBeTruthy() // V1（EMPTY_WITHOUT_REASON）を通す
+  })
+
+  it('fetch 側の取り逃し（extraNotes）を notes に引き継ぐ', async () => {
+    extractMock.mockResolvedValueOnce(dayResult('2026-07-25', ['A']))
+    const { result } = await extractTextPerDocument(
+      {},
+      docs(['2026-07-25']),
+      '2026-07',
+      '2026-07-25',
+      { extraNotes: ['2026-07-26: 内容が変化せず未取得'] },
+    )
+    expect(result.notes).toContain('2026-07-26: 内容が変化せず未取得')
+  })
+
+  it('リトライ予算は呼出ごとに独立（1日目で2回失敗しても2日目はフル予算）', async () => {
+    extractMock
+      .mockRejectedValueOnce(new Error('gemini 500'))
+      .mockRejectedValueOnce(new Error('gemini 500'))
+      .mockResolvedValueOnce(dayResult('2026-07-25', ['A']))
+      .mockRejectedValueOnce(new Error('gemini 500'))
+      .mockResolvedValueOnce(dayResult('2026-07-26', ['B']))
+    const { result } = await extractTextPerDocument(
+      {},
+      docs(['2026-07-25', '2026-07-26']),
+      '2026-07',
+      '2026-07-25',
+    )
+    expect(result.screenings).toHaveLength(2)
+    expect(extractMock).toHaveBeenCalledTimes(5)
+  })
+
+  it('デッドライン超過は1日以上成功していれば部分結果を返す（打ち切り）', async () => {
+    let clock = 0
+    extractMock.mockImplementation(async () => {
+      clock += 400 // 1呼出=400ms 経過する偽時計
+      return dayResult('2026-07-25', ['A'])
+    })
+    const { result } = await extractTextPerDocument(
+      {},
+      docs(['2026-07-25', '2026-07-26', '2026-07-27']),
+      '2026-07',
+      '2026-07-25',
+      { deadlineMs: 500, now: () => clock },
+    )
+    // 1日目(t:0→400)・2日目(t:400→800)は成功、3日目は呼出前判定(t:800≥500)で打ち切り
+    expect(extractMock).toHaveBeenCalledTimes(2)
+    expect(result.screenings).toHaveLength(2)
+    expect(result.notes).toContain('2/3日で打ち切り')
+  })
+
+  it('デッドライン超過で0日なら throw する（単日経路と同じ）', async () => {
+    let first = true
+    const now = () => {
+      if (first) {
+        first = false
+        return 0 // startedAt
+      }
+      return 10_000 // 1日目の呼出前判定でもう超過している
+    }
+    extractMock.mockResolvedValue(dayResult('2026-07-25', ['A']))
+    await expect(
+      extractTextPerDocument({}, docs(['2026-07-25']), '2026-07', '2026-07-25', {
+        deadlineMs: 500,
+        now,
+      }),
+    ).rejects.toThrow(/デッドライン超過/)
+    expect(extractMock).not.toHaveBeenCalled()
   })
 })
