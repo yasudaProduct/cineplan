@@ -64,6 +64,7 @@
 - [ ] **P1-6 Cron + Queues 配線**
   - dispatch（active→Queue）+ consumer + 手動取込（`POST /admin/ingest`）を実装。Cron は prod のみ。
   - 手動トリガー経路は E2E 確認済み。**実 Queues/Cron 挙動（リトライ等）は ST で確認**（`14` §1）。
+  - **2026-07-26 追記（P4-8 の5館 active 昇格後に着手）**: ST の検証機会は N-06（1劇場1日1セッション）により1日1回しか無いため、実機を撃つ前にエミュレーションでも検証できる判定ロジックを先にユニットテストで固定した（`packages/ingest/src/__tests__/index.spec.ts` に12件追加。`queue()` の fetch_failed 指数バックオフ 300→600 秒と3回目の打ち切り／`fetch_failed` 以外は即 ack／`scheduled()` の cron 文字列リテラル分岐）。残る実機確認の手順は `16` §4.4 — **Step A**: 到達不能ダミー劇場（`.invalid`・paused）で**先方アクセスゼロ**のまま Queues 再配信と Slack 抑止を観測 / **Step B**: 日付固定の one-shot cron を ST に一時追加して実発火を観測（実施日は手動取込を行わない） / **Step C**: ディスパッチ〜最終 `run.done` の所要時間を実測し **N-02（前日 06:00 JST 完了）と突合**する。最悪ケース 5館×12分≒60分 に対し prod cron は 06:00 JST 開始のため、実測次第で cron 前倒しを P5-7 前に判断する。TravelMatrix 分岐は cron 文字列の完全一致で選ばれるため ST の one-shot 式では検証できず、prod 初回月曜のログ確認とする。
 - [x] **P1-7 失敗ハンドリング + Slack 通知**
   - `06` §7 のリトライ方針・status 分岐・Slack。再抽出は R2 から（先方再取得は fetch_failed のみ）。
   - Done ✓: 抽出到達不可で `extraction_failed`+error 記録を E2E 確認。Slack は配線済み（未設定時は no-op）。
