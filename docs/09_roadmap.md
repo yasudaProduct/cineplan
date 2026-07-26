@@ -61,12 +61,18 @@
 - [x] **P1-5 正規化 + D1 洗い替え書込**
   - 24時超え・endTime 補完・title_key 名寄せ・businessDate 別 DELETE→INSERT（月間画像対応）。
   - Done ✓: E2E で screenings が入り（UTC 正規化・名寄せ 3上映→2作品）、再実行で重複しない（3件のまま）。
-- [ ] **P1-6 Cron + Queues 配線**
+- [x] **P1-6 Cron + Queues 配線**
   - dispatch（active→Queue）+ consumer + 手動取込（`POST /admin/ingest`）を実装。Cron は prod のみ。
   - 手動トリガー経路は E2E 確認済み。**実 Queues/Cron 挙動（リトライ等）は ST で確認**（`14` §1）。
   - **2026-07-26 追記（P4-8 の5館 active 昇格後に着手）**: ST の検証機会は N-06（1劇場1日1セッション）により1日1回しか無いため、実機を撃つ前にエミュレーションでも検証できる判定ロジックを先にユニットテストで固定した（`packages/ingest/src/__tests__/index.spec.ts` に12件追加。`queue()` の fetch_failed 指数バックオフ 300→600 秒と3回目の打ち切り／`fetch_failed` 以外は即 ack／`scheduled()` の cron 文字列リテラル分岐）。残る実機確認の手順は `16` §4.4 — **Step A**: 到達不能ダミー劇場（`.invalid`・paused）で**先方アクセスゼロ**のまま Queues 再配信と Slack 抑止を観測 / **Step B**: 日付固定の one-shot cron を ST に一時追加して実発火を観測（実施日は手動取込を行わない） / **Step C**: ディスパッチ〜最終 `run.done` の所要時間を実測し **N-02（前日 06:00 JST 完了）と突合**する。最悪ケース 5館×12分≒60分 に対し prod cron は 06:00 JST 開始のため、実測次第で cron 前倒しを P5-7 前に判断する。TravelMatrix 分岐は cron 文字列の完全一致で選ばれるため ST の one-shot 式では検証できず、prod 初回月曜のログ確認とする。
   - **Step A 完了 ✓（2026-07-26・ST。実 Queues 再配信）**: 到達不能ダミー劇場（`thr_verify_retry`・paused・`https://unreachable.invalid/schedule`）で**先方サイトへのアクセスゼロ**のまま観測。3 run すべて `fetch_failed`（`trigger=manual`）で、再配信間隔は **301.2秒 / 601.5秒**（設計値 300/600・誤差1秒未満）、**3回目で打ち切り**（4回目が来ないことを +14分で確認）、**Slack は3回目のみ1通**（attempt 1・2 の `silent` 抑止が実機で機能）。全体所要 15分3秒。手動取込も Queue 経由化により cron と同じ再配信対象になることを実機で確認。検証後ダミーは retired。副次発見: `.invalid` への fetch は DNS エラーの throw ではなく **Cloudflare が HTTP 530 を返す**ため `fetchWithUA()` の `!res.ok` 側で throw する（`log.ts` の分類は network ではなく http/530）。`fetch_failed` への確定は同じ。また再配信間隔は Workers Logs より D1 の `started_at` 差で見るほうが確実（ログの時間窓を外して取りこぼしかけた）。
-  - 残: **Step B / Step C**（実 Cron 発火とサイクル時間の実測）。実施日は手動取込を行わない日を選ぶ。
+  - **Step B / Step C 完了 ✓（2026-07-26 17:00 JST・ST。実 Cron 発火とサイクル時間）**: 日付固定 one-shot cron（`0 8 26 7 *`）を `[env.st.triggers]` に一時追加して発火させ、検証後に削除（`chore/p1-6-st-cron-verify` → `chore/p1-6-st-cron-revert`）。**Done 条件はすべて満たした**。
+    - **ディスパッチ**: 08:00:00 UTC の発火から 8.4秒後に1館目が開始。active 5館すべてが `trigger='cron'` で処理された（＝`scheduled()` が5件 enqueue した証拠）。
+    - **直列性**: 前の run の `finished_at` から次の `started_at` まで **0.39〜0.65秒**。`max_batch_size=1` / `max_concurrency=1` の完全直列が実機で確認できた。run 行は consumer 内の `ingestTheater` で作られるため、5件同時ではなく1件ずつ現れる。
+    - **サイクル時間（Step C）= 340秒（5分40秒）**。内訳: T・ジョイ梅田 110.8秒（`tabs`・5日分）/ シネ・ヌーヴォ 22.8秒 / テアトル梅田 54.7秒 / 大阪ステーションシネマ 97.8秒 / シアターセブン 52.1秒。事前見積りの最悪ケース（5館×`RUN_BUDGET_MS`12分≒60分）に対し**実測は 1/10 以下**。
+    - **N-02 突合**: prod cron は 21:00 UTC = 06:00 JST 開始のため完了は約 06:06 JST となり、「対象日の前日 06:00 JST までに取込完了」を**額面上6分超過する**。加えて `fetch_failed` の再配信1本で +15分（5分+10分）が乗るため、06:00 開始では容易に超える。**prod cron を 20:00 UTC（05:00 JST）へ前倒しすることを推奨**（54分の余裕。N-05 の 30館想定でも平均68秒/館なら約34分で収まる）。実施は P5-7 の prod 昇格時（オーナー判断）。
+    - **副次観察（P4-8 側の要対応）**: 5館のうち2館が V2 `COUNT_ANOMALY` で `validation_failed` → レビューキュー入り（T・ジョイ梅田 186件 vs 平均74.6 / 大阪ステーションシネマ 355件 vs 平均115.7）。いずれも**取込・抽出は正常で、過去平均が汚れているだけ**。`recentAvgCount` は直近7件の succeeded の `written_count` 平均で、T・ジョイは ADR-0019 以前の単日 run（27/62/51件）が、大阪ステーションシネマは 2026-07-19 の静的取得バグ由来の `written_count=0` 2件が平均を押し下げている。承認すれば `written_count` が記録され以降の平均が追従する（ADR-0019 の想定どおり）。**大阪ステーションシネマは対象日以降の screenings が D1 に0件**なので、承認しないと `/plan` に出ない。
+    - ST では検証できない項目（既知・設計どおり）: `scheduled()` の TravelMatrix 分岐は cron 文字列の完全一致で選ばれるため one-shot 式では通らない。ユニットテストで固定済み・手動再生成は P4-6 で E2E 済みのため、prod 初回月曜のログ確認とする。
 - [x] **P1-7 失敗ハンドリング + Slack 通知**
   - `06` §7 のリトライ方針・status 分岐・Slack。再抽出は R2 から（先方再取得は fetch_failed のみ）。
   - Done ✓: 抽出到達不可で `extraction_failed`+error 記録を E2E 確認。Slack は配線済み（未設定時は no-op）。

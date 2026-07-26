@@ -239,13 +239,36 @@ crons = ["30 6 28 7 *"]
 4. **所要時間を記録する**（Step C）。
 5. 追加した `[env.st.triggers]` を revert して `develop` へ（ST の Cron を原則 OFF に戻す）。
 
+**run は5件同時に現れない**。`createIngestRun()` は `scheduled()` ではなく consumer 内の `ingestTheater()` で呼ばれるため、`max_concurrency=1` の直列処理に従って1件ずつ作られる。「1件しか出ていない」は異常ではない。ディスパッチが5件成功したことは、最終的に5 run が `trigger='cron'` で揃うことで確認する。
+
+**実施結果（2026-07-26 17:00 JST・ST。再実行時の期待値として）**
+
+| 劇場 | fetch/extract | status | 件数 | 所要 |
+|---|---|---|---|---|
+| T・ジョイ梅田 | rendered/text・`tabs`5日 | validation_failed（COUNT_ANOMALY） | 186 | 110.8秒 |
+| シネ・ヌーヴォ | static/vision | succeeded | 22 | 22.8秒 |
+| テアトル梅田 | rendered/text | succeeded | 72 | 54.7秒 |
+| 大阪ステーションシネマ | rendered/text | validation_failed（COUNT_ANOMALY） | 355 | 97.8秒 |
+| シアターセブン | static/text | succeeded | 144 | 52.1秒 |
+
+- 発火（08:00:00 UTC）から1館目開始まで **8.4秒**
+- run 間のギャップ **0.39〜0.65秒** ＝ 完全直列を実機で確認
+- **サイクル時間 340秒（5分40秒）**。事前見積りの最悪ケース（5館×12分≒60分）の 1/10 以下
+
 #### Step C: サイクル時間の実測と N-02 の突合
 
-Step B のログで **`cron.dispatch.done` から最後の `run.done` までの経過時間**を必ず記録する。現状これはどこにも実測がなく、N-02（対象日の前日 06:00 JST までに取込完了）を満たせるかの判断材料が無い。
-
 - consumer は `max_concurrency=1` の完全直列、1 run の予算は `RUN_BUDGET_MS`=12分 → 最悪 5館 × 12分 ≒ **60分**
-- prod の取込 cron は 21:00 UTC = **06:00 JST 開始**。最悪ケースでは完了が 07:00 JST になり、N-02 を額面上満たさない
-- 実測が十分短ければ現行のままでよい。長ければ prod の cron 前倒し（例 20:00 UTC = 05:00 JST）を **P5-7 の前に**判断する
+- prod の取込 cron は 21:00 UTC = **06:00 JST 開始**
+- **実測 340秒 → 完了は約 06:06 JST**。N-02（対象日の前日 06:00 JST までに取込完了）を**額面上6分超過する**。さらに `fetch_failed` の再配信1本で **+15分**（5分+10分）が乗るため、06:00 開始では容易に超える
+- **推奨: prod cron を 21:00 UTC → 20:00 UTC（05:00 JST）へ前倒し**する。54分の余裕ができ、再配信1本でも収まる。N-05 の 30館想定でも平均68秒/館なら約34分で収まる。実施は P5-7 の prod 昇格時（`[env.prod.triggers]` の `crons` を `["0 20 * * *", "0 18 * * 1"]` に変更）
+
+#### 参考: COUNT_ANOMALY でレビューキューに入った場合
+
+上記の実施では5館中2館が V2 `COUNT_ANOMALY` で `validation_failed` になった。**取込・抽出は正常で、過去平均が汚れているだけ**のケースがある。`recentAvgCount()` は直近7件の `succeeded` の `written_count` 平均なので、
+- ADR-0019 以前の単日 run が残っている劇場（T・ジョイ梅田: 27/62/51件）
+- 過去の不具合で `written_count=0` のまま succeeded した run がある劇場（大阪ステーションシネマ: 2026-07-19 の静的取得バグ由来2件）
+
+は平均が実態より低く、正常な件数でも逸脱と判定される。レビューキューで内容を目視して承認すれば `written_count` が記録され、以降の平均が追従する。**承認しないと screenings が D1 に書かれない**ので、`/plan` に出ない劇場が残る点に注意（大阪ステーションシネマは対象日以降の screenings が0件だった）。
 
 #### 検証できないもの（既知）
 
