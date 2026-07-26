@@ -1,11 +1,9 @@
 import type { ScreeningLeg } from '@cinema/shared'
+import { toCalendarUtc } from '@cinema/shared'
 
 // Google カレンダー登録 URL の生成（F-10・ADR-0008。OAuth 不使用・上映1件=予定1件）。
-
-// '2026-07-15T01:00:00.000Z' → '20260715T010000Z'（Google/iCal の UTC 形式）
-export function toCalendarUtc(iso: string): string {
-  return iso.replace(/\.\d{3}Z$/, 'Z').replace(/[-:]/g, '')
-}
+// toCalendarUtc の実体は P5-1 で @cinema/shared へ移動（.ics サーバ生成と共通化）。
+export { toCalendarUtc }
 
 export function googleCalendarUrl(leg: ScreeningLeg): string {
   const params = new URLSearchParams({

@@ -169,7 +169,8 @@
 
 ## P5. 共有・LP・仕上げ
 
-- [ ] **P5-1 共有プラン（POST /plans, GET /plans/{id}）** + 期限切れ処理
+- [x] **P5-1 共有プラン（POST /plans, GET /plans/{id}）** + 期限切れ処理（実装ブランチ `feat/p5-1-shared-plans`）
+  - Done ✓（2026-07-26）: `POST /v1/plans`（201・`pln_` id・`{WEB_BASE_URL}/p/{id}`・expiresAt=+30日）/ `GET /v1/plans/{id}`（スナップショットをそのまま返す・F-13）/ `GET /v1/plans/{id}/ics`（サーバ生成・興行日ファイル名）。**期限切れは読み取り時判定で不存在と同じ 404 NOT_FOUND**（存在の痕跡を返さない。物理削除は P5-5 の Cron。docs/04 設計メモ9）。運用防御: ボディ64KB(413)・legs≤50・screening≥1・zod strip 後を永続化（設計メモ8）。`.ics` 生成は web のクライアント生成（P3-5）と共通化するため `buildIcs`/`toCalendarUtc` を `@cinema/shared` へ移動（二重実装排除）。`WEB_BASE_URL` var を api の3環境に追加（prod は P5-7 で置換）。route ユニット13件 + ローカル実機 E2E（POST→GET→ics→404）確認済み。**web の共有ボタン配線と共有ページ本体は P5-2**。
 - [ ] **P5-2 共有ページ /p/{id}（SSR + OGP 動的画像）**
 - [ ] **P5-3 LP**（`07_screens.md` §1.2）
 - [ ] **P5-4 法務ページ**（利用規約・プライバシー・/bot・免責表示）← `08_compliance-policy.md` §3, §5

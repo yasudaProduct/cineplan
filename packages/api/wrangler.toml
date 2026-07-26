@@ -15,6 +15,8 @@ id = "local-cinema-kv"
 
 [vars]
 APP_ENV = "local"
+# 共有 URL（{WEB_BASE_URL}/p/{planId}）の組み立て用（P5-1・docs/04 設計メモ10）
+WEB_BASE_URL = "http://localhost:5173"
 
 # --- ST 環境（14 §3.1 命名規約。ID は P4-0 で実値に置換）---
 [env.st]
@@ -22,6 +24,7 @@ name = "cinema-api-st"
 
 [env.st.vars]
 APP_ENV = "st"
+WEB_BASE_URL = "https://cinema-web-st.yuta-develop-ct.workers.dev"
 
 [[env.st.d1_databases]]
 binding = "DB"
@@ -39,6 +42,8 @@ name = "cinema-api-prod"
 
 [env.prod.vars]
 APP_ENV = "prod"
+# P5-7 でドメイン確定後に実値へ置換（docs/16 §5.1）
+WEB_BASE_URL = "REPLACE_WITH_PROD_WEB_BASE_URL"
 
 [[env.prod.d1_databases]]
 binding = "DB"
