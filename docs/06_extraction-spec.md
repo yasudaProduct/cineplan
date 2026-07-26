@@ -94,7 +94,11 @@ export const ExtractionResult = z.object({
 ## 4. プロンプト設計
 
 - 場所: `packages/ingest/src/extraction/prompts/`。**プロンプトは必ずバージョン番号付きファイルで管理し、ingest_runs.prompt_version に記録する**（過去実行の再現のため）。既存バージョンのファイルは変更せず、修正は新バージョン追加で行う。プロンプト本文はプロバイダ非依存に保つ。方式別に分ける: `text_v{N}.ts`（HTML）/ `vision_v{N}.ts`（画像）。
-- プロバイダ/モデル: **本番/ST 既定 Google Gemini Flash 系（無料ティア。ADR-0011。モデルは `GEMINI_MODEL=gemini-flash-lite-latest`・ADR-0018）、ローカル開発は Ollama 既定**。呼び出しはプロバイダ抽象化した抽出クライアント越しに行い、`provider`（`gemini` | `ollama` | `workers-ai` | `anthropic`）と `model` を設定値（`LLM_PROVIDER` / wrangler var）で切替える。具体モデルID（例: Gemini は `gemini-flash` 系、Ollama は `qwen2.5` 等）は実装時に確定する。精度不足は管理サイトの検証NG率で観測し、上位モデル/別プロバイダへ差し替える（抽象化済みのため容易）。
+- プロバイダ/モデル: **本番/ST 既定 Google Gemini Flash 系（無料ティア。ADR-0011）、ローカル開発は Ollama 既定**。呼び出しはプロバイダ抽象化した抽出クライアント越しに行い、`provider`（`gemini` | `ollama` | `workers-ai` | `anthropic`）と `model` を設定値（`LLM_PROVIDER` / wrangler var）で切替える。精度不足は管理サイトの検証NG率で観測し、上位モデル/別プロバイダへ差し替える（抽象化済みのため容易）。
+- **モデルは方式（modality）ごとに指定する（ADR-0020）**。`createLlmClient(env, modality)` に `'text' | 'vision'` を明示的に渡す。
+  - **text**: `GEMINI_MODEL`。ST/prod は `gemini-flash-lite-latest`（ADR-0018。最上位 Flash が無料枠の容量逼迫で 503／応答保留になるため）。
+  - **vision**: `GEMINI_MODEL_VISION`。既定 `gemini-flash-latest`。**Flash-Lite は月間グリッド画像の日付列を読み取れず、全日程を単一日に潰す**ことが実データで判明したため（ADR-0020）。同一プロンプト `vision_v1`・同一画像で最上位 Flash は 136件を正しく分散できている。
+  - **モデルやプロンプトを変更するときは text と vision の両パスで実データ検証を行う**。ADR-0018 は text の実測のみで両パスに適用してしまい、vision 劇場が1館しかないため回帰が見逃された。
 - 呼出パラメータ: temperature 0。JSON 構造化出力は Gemini の `responseMimeType=application/json` + `responseSchema`（§3 の zod を JSON Schema 化）で担保する。出力上限は想定件数 × 60 トークン + 500 目安。
 - 記録: ingest_runs に provider + model + in/out トークンを残す（プロバイダ横断でコスト・品質を比較）。`llm_model` は provider 込みの識別子（例: `gemini:gemini-flash`）とする。
 
@@ -187,14 +191,21 @@ zod 検証通過後、以下の妥当性検証を行う。1つでも NG なら `
 | # | ルール | NG コード |
 |---|---|---|
 | V1 | screenings 件数が 0 のとき、notes に休館理由がない | `EMPTY_WITHOUT_REASON` |
-| V2 | 件数が過去7日間の同劇場平均の 50%〜200% を逸脱（履歴3件未満ならスキップ） | `COUNT_ANOMALY` |
+| V2 | 件数が過去7日間の同劇場平均の 50%〜200% を逸脱（履歴**2件**未満ならスキップ） | `COUNT_ANOMALY` |
 | V3 | 正規化後の start_at が businessDate の 06:00〜翌 04:00 (JST) を逸脱 | `TIME_OUT_OF_RANGE` |
 | V4 | endTime ≠ null なのに end ≤ start（24時超え正規化後） | `NEGATIVE_DURATION` |
 | V5 | 同一 (movieTitle, startTime) の重複 | `DUPLICATE_ROW` |
 | V6 | movieTitle に HTML タグ・URL が混入 | `DIRTY_TITLE` |
+| V7 | 同一 (businessDate, screenName) で上映時間帯が重複、または開始時刻が完全一致する別作品 | `SCREEN_TIME_OVERLAP` |
 
 - V2 は「サイト大改修で半分しか取れていない」を検出する主砲。閾値は運用しながら調整する（定数は設定ファイルで管理）。
+- **V2 の履歴下限は当初 3 件だったが、2026-07-26 に 2 件へ下げた**（ADR-0020）。シネ・ヌーヴォの成功 run が2件（145/136件）しか無い状態で 22 件へ激減した run が V2 を素通りし、洗い替えで6日分のデータを失う事故が起きたため。2件でも平均としての意味はあり、50〜200% は十分ゆるい。誤検知はレビューキューでの人間確認に落ちるだけで、データ損失より軽い。
+- **V7（2026-07-26 追加・ADR-0020）**: 1つのスクリーンで時間帯が重なる上映は物理的に存在しない。**月間グリッド画像の全日程が単一日に潰れる**類の日付誤りを確実に検出する（正規化後に判定＝`validateNormalized`）。誤検知を避けるため:
+  - `screenName` が空文字の劇場（サイトがスクリーンを公開していない。例: **大阪ステーションシネマ**は355件すべて空）はスキップする。並行上映が1グループに畳まれ、全件が重複扱いになるため。**この劇場群では V7 は効かず V2 が主防御になる**。
+  - 重複判定は**両方の endAt が site 由来のときのみ**（`endAtSource='estimated'` は推定尺のため尺違いで誤検知しうる）。
+  - ただし**開始時刻が完全一致する別作品**は endAt の由来に関わらず NG とする（1スクリーンが同一分に2作品を開始できない）。二本立てを1つの開始時刻で併記するサイトでは誤検知しうるが、その場合はレビューキューで承認すればよい。
 - レビューキューで approve された payload は通常の書込関数で反映する（二重実装禁止）。
+- **検証は書込より前に走る**（`validateNormalized` → `normalizeResolveWrite`）。したがって V3/V4/V7 で弾かれた run は D1 を一切変更しない＝洗い替えによるデータ損失も起きない。これが V7 を「日付誤りの主防御」として置く理由。
 
 ## 6. 正規化
 
