@@ -31,7 +31,10 @@ export async function recentAvgCount(
     )
     .bind(theaterId)
     .all<{ c: number }>()
-  if (results.length < 3) return undefined
+  // 履歴下限は 2 件（ADR-0020 で 3→2）。シネ・ヌーヴォの成功 run が2件しか無い状態で
+  // 22件へ激減した run が V2 を素通りし、洗い替えで6日分を失う事故が起きたため。
+  // 2件でも平均としての意味はあり、50〜200% の窓は十分ゆるい。
+  if (results.length < 2) return undefined
   const sum = results.reduce((a, r) => a + r.c, 0)
   return sum / results.length
 }

@@ -1,4 +1,4 @@
-import { ExtractedDateList, type ExtractionResult } from '@cinema/shared'
+import { ExtractedDateList, type ExtractionResult, type ExtractMethod } from '@cinema/shared'
 import {
   buildTextV1SystemPrompt,
   buildTextV1UserText,
@@ -35,13 +35,15 @@ export interface ExtractOutcome {
   outTokens: number | null
 }
 
-// LLM 呼出1回 + JSON パース（方式共通の下回り）
+// LLM 呼出1回 + JSON パース（方式共通の下回り）。
+// modality はモデル選択に使う（vision と text で別モデル。ADR-0020）。
 async function extractOnce(
   env: LlmEnv,
   input: ExtractInput,
   promptVersion: string,
+  modality: ExtractMethod,
 ): Promise<ExtractOutcome> {
-  const client = createLlmClient(env)
+  const client = createLlmClient(env, modality)
   const result = await client.extract(input)
   let parsed: unknown
   try {
@@ -69,6 +71,7 @@ export async function extractVision(
     env,
     { systemPrompt: buildVisionV1SystemPrompt(businessMonth), images },
     VISION_V1_VERSION,
+    'vision',
   )
 }
 
@@ -86,6 +89,7 @@ export async function extractText(
       userText: buildTextV1UserText(scheduleUrl, businessMonth, preprocessedText),
     },
     TEXT_V1_VERSION,
+    'text',
   )
 }
 
@@ -251,6 +255,7 @@ export async function extractTextDaySplit(
             responseFormat: 'dateList',
           },
           TEXT_V3_VERSION,
+          'text',
         ),
       ),
       (p) => ExtractedDateList.parse(p),
@@ -415,6 +420,7 @@ async function extractDayUnits(
                 ),
               },
               TEXT_V3_VERSION,
+              'text',
             ),
           ),
           parseExtraction,

@@ -15,22 +15,67 @@ describe('stripJsonFence', () => {
 
 describe('createLlmClient', () => {
   it('gemini は API キー未設定でエラー', () => {
-    expect(() => createLlmClient({ LLM_PROVIDER: 'gemini' })).toThrow(/GEMINI_API_KEY/)
+    expect(() => createLlmClient({ LLM_PROVIDER: 'gemini' }, 'text')).toThrow(/GEMINI_API_KEY/)
   })
   it('gemini は modelId が gemini:*', () => {
-    const c = createLlmClient({
-      LLM_PROVIDER: 'gemini',
-      GEMINI_API_KEY: 'x',
-      GEMINI_MODEL: 'gemini-flash-latest',
-    })
+    const c = createLlmClient(
+      {
+        LLM_PROVIDER: 'gemini',
+        GEMINI_API_KEY: 'x',
+        GEMINI_MODEL: 'gemini-flash-latest',
+      },
+      'text',
+    )
     expect(c.modelId).toBe('gemini:gemini-flash-latest')
   })
   it('ollama は modelId が ollama:*', () => {
-    const c = createLlmClient({ LLM_PROVIDER: 'ollama', OLLAMA_MODEL: 'qwen2-vl' })
+    const c = createLlmClient({ LLM_PROVIDER: 'ollama', OLLAMA_MODEL: 'qwen2-vl' }, 'text')
     expect(c.modelId).toBe('ollama:qwen2-vl')
   })
   it('未実装 provider はエラー', () => {
-    expect(() => createLlmClient({ LLM_PROVIDER: 'workers-ai' })).toThrow(/未実装/)
+    expect(() => createLlmClient({ LLM_PROVIDER: 'workers-ai' }, 'text')).toThrow(/未実装/)
+  })
+})
+
+// modality（vision/text）ごとのモデル選択（ADR-0020）。
+// ADR-0018 で ST/prod の GEMINI_MODEL を Flash-Lite にしたことが vision パスにも波及し、
+// 月間グリッド画像の全日程が単一日に潰れて6日分のデータを失う事故が起きた。
+// **vision は GEMINI_MODEL にフォールバックしない**ことが再発防止の核心なので、そこを固定する。
+describe('createLlmClient — vision/text のモデル分離（ADR-0020）', () => {
+  const ST_LIKE = {
+    LLM_PROVIDER: 'gemini',
+    GEMINI_API_KEY: 'x',
+    GEMINI_MODEL: 'gemini-flash-lite-latest',
+    GEMINI_MODEL_VISION: 'gemini-flash-latest',
+  }
+
+  it('text は GEMINI_MODEL を使う', () => {
+    expect(createLlmClient(ST_LIKE, 'text').modelId).toBe('gemini:gemini-flash-lite-latest')
+  })
+
+  it('vision は GEMINI_MODEL_VISION を使う', () => {
+    expect(createLlmClient(ST_LIKE, 'vision').modelId).toBe('gemini:gemini-flash-latest')
+  })
+
+  it('GEMINI_MODEL_VISION 未設定でも vision は GEMINI_MODEL に落ちず既定 flash-latest を使う（事故の再発防止）', () => {
+    const c = createLlmClient(
+      { LLM_PROVIDER: 'gemini', GEMINI_API_KEY: 'x', GEMINI_MODEL: 'gemini-flash-lite-latest' },
+      'vision',
+    )
+    expect(c.modelId).toBe('gemini:gemini-flash-latest')
+    expect(c.modelId).not.toContain('lite')
+  })
+
+  it('両 var 未設定なら text/vision とも既定 flash-latest（従来の既定を維持）', () => {
+    const env = { LLM_PROVIDER: 'gemini', GEMINI_API_KEY: 'x' }
+    expect(createLlmClient(env, 'text').modelId).toBe('gemini:gemini-flash-latest')
+    expect(createLlmClient(env, 'vision').modelId).toBe('gemini:gemini-flash-latest')
+  })
+
+  it('ollama は modality によらず OLLAMA_MODEL（local 専用のため分離しない）', () => {
+    const env = { LLM_PROVIDER: 'ollama', OLLAMA_MODEL: 'qwen2.5vl' }
+    expect(createLlmClient(env, 'text').modelId).toBe('ollama:qwen2.5vl')
+    expect(createLlmClient(env, 'vision').modelId).toBe('ollama:qwen2.5vl')
   })
 })
 
@@ -60,7 +105,7 @@ describe('responseFormat スキーマ切替', () => {
 
   it('gemini: dateList 指定で responseSchema が dates スキーマに切り替わる', async () => {
     const bodies = captureFetchBody()
-    const c = createLlmClient({ LLM_PROVIDER: 'gemini', GEMINI_API_KEY: 'x' })
+    const c = createLlmClient({ LLM_PROVIDER: 'gemini', GEMINI_API_KEY: 'x' }, 'text')
     await c.extract({ systemPrompt: 's', userText: 'u', responseFormat: 'dateList' })
     await c.extract({ systemPrompt: 's', userText: 'u' }) // 既定は extraction
     const schemaOf = (b: Record<string, unknown>) =>
@@ -72,7 +117,7 @@ describe('responseFormat スキーマ切替', () => {
 
   it('ollama: dateList 指定で format が dates スキーマに切り替わる', async () => {
     const bodies = captureFetchBody()
-    const c = createLlmClient({ LLM_PROVIDER: 'ollama', OLLAMA_MODEL: 'qwen2.5' })
+    const c = createLlmClient({ LLM_PROVIDER: 'ollama', OLLAMA_MODEL: 'qwen2.5' }, 'text')
     await c.extract({ systemPrompt: 's', userText: 'u', responseFormat: 'dateList' })
     await c.extract({ systemPrompt: 's', userText: 'u' })
     const formatOf = (b: Record<string, unknown>) =>

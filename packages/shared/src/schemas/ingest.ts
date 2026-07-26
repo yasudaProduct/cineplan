@@ -23,7 +23,7 @@ export type IngestRunStatus = z.infer<typeof IngestRunStatus>
 export const ReviewStatus = z.enum(['pending', 'approved', 'rejected'])
 export type ReviewStatus = z.infer<typeof ReviewStatus>
 
-// 妥当性検証 NG コード（docs/06 §5 の V1〜V6）
+// 妥当性検証 NG コード（docs/06 §5 の V1〜V7）
 export const ValidationCode = z.enum([
   'EMPTY_WITHOUT_REASON',
   'COUNT_ANOMALY',
@@ -31,6 +31,8 @@ export const ValidationCode = z.enum([
   'NEGATIVE_DURATION',
   'DUPLICATE_ROW',
   'DIRTY_TITLE',
+  // V7: 同一スクリーンで上映時間帯が重複（月間グリッドの日付潰れ等。ADR-0020）
+  'SCREEN_TIME_OVERLAP',
 ])
 export type ValidationCode = z.infer<typeof ValidationCode>
 
