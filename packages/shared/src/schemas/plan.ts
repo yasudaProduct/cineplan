@@ -122,3 +122,26 @@ export const ApiError = z.object({
   details: z.record(z.string(), z.unknown()).optional(),
 })
 export type ApiError = z.infer<typeof ApiError>
+
+// ---- 共有プラン（P5-1。F-12/F-13・docs/04 /plans）----
+
+// POST /v1/plans の運用防御（docs/04 設計メモ8）。legs の現実的上限
+// （1日のはしごは screening 数本 + travel/wait でも 20 前後）に余裕を持たせた値。
+export const MAX_SHARED_PLAN_LEGS = 50
+
+// 共有プランの有効期限（F-13: 30日）
+export const SHARED_PLAN_TTL_DAYS = 30
+
+// POST /v1/plans リクエスト。表示中の Plan をそのまま永続化する（docs/04 設計メモ2）。
+export const SharePlanRequest = z.object({
+  plan: Plan,
+})
+export type SharePlanRequest = z.infer<typeof SharePlanRequest>
+
+// POST /v1/plans レスポンス（201）
+export const SharePlanResponse = z.object({
+  planId: z.string(),
+  url: z.string().url(),
+  expiresAt: z.string().datetime(),
+})
+export type SharePlanResponse = z.infer<typeof SharePlanResponse>

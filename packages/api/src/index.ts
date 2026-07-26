@@ -4,6 +4,7 @@ import type { Env } from './env'
 import { rateLimit } from './middleware/rate-limit'
 import { moviesRoute } from './routes/movies'
 import { planRoute } from './routes/plan'
+import { plansRoute } from './routes/plans'
 import { theatersRoute } from './routes/theaters'
 
 export type { Env }
@@ -26,6 +27,6 @@ app.use('/v1/*', rateLimit(60))
 app.route('/v1/theaters', theatersRoute)
 app.route('/v1/movies', moviesRoute)
 app.route('/v1/plan', planRoute)
-// /v1/plans（共有）は P5-1 で追加
+app.route('/v1/plans', plansRoute) // 共有プラン（P5-1・F-12/F-13）
 
 export default app
