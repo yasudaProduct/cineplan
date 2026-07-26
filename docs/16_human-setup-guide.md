@@ -209,7 +209,16 @@ pnpm -F @cinema/api exec wrangler d1 execute cinema_hashigo_st --remote --comman
 | t+15分 | Slack に `🛑 取込失敗(fetch_failed)` が **1通だけ** | attempt 1・2 が silent で抑止されているか |
 | 以降 | 4回目が来ない | `max_retries=3` + `ack` が効いているか |
 
+**再配信の間隔は Workers Logs より D1 で見るほうが確実**（ログの絞り込みは時間窓を外すと簡単に取りこぼす。実際に 2026-07-26 の検証では、ログを見て「実行されていない」と誤認しかけた）。attempt ごとに新しい run 行が立つので、`started_at` の差がそのまま再配信間隔になる:
+
+```
+pnpm -F @cinema/api exec wrangler d1 execute cinema_hashigo_st --remote --command "SELECT id,trigger,status,started_at,error_message FROM ingest_runs WHERE theater_id='thr_verify_retry' ORDER BY started_at;"
+```
+
 4. 後片付け: 管理サイトでダミーを **retired** にする（DELETE しない。`ingest_runs` の履歴と参照整合を残すため）。`fetch_failed` の run が3行残るが、これは実際に3回アクセスを試みた記録なので正しい（`countTodaySiteFetches` にも3回と数えられる）。
+
+**実施結果（2026-07-26・ST。再実行時の期待値として）**: 3 run すべて `fetch_failed`（`trigger=manual`）。間隔は **301.2秒 / 601.5秒**（設計値 300/600・誤差1秒未満）、**3回目で打ち切り**（4回目の配信が来ないことを +14分で確認）、**Slack は3回目のみ1通**。全体所要 15分3秒。
+なお `.invalid` への fetch は DNS エラーの throw ではなく **Cloudflare が HTTP 530 を返す**ため、`fetchWithUA()` の `!res.ok` 側で throw する（`error_message` は `HTTP 530 for https://unreachable.invalid/schedule`、`log.ts` の分類は network ではなく **http/530**）。`fetch_failed` に確定する点は同じ。
 
 #### Step B: 実 Cron の発火（実5館・その日の唯一のセッション）
 
