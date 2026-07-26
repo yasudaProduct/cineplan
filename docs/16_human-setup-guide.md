@@ -184,17 +184,18 @@ P1-6（Cron + Queues 配線）の実装は P1 で完了しているが、**ロ�
 
 実劇場を故意に失敗させる必要はない。到達不能な URL を持つ **`paused` の検証用ダミー劇場**で観測する。`paused` でも手動取込が通るのは、`assertComplianceGate` の status チェックが `trigger='cron'` のときだけ効くため（`active` ではないので `/plan` にも出ない）。
 
-1. ST の D1 にダミーを1件だけ投入する。`schedule_url` の `.invalid` は RFC 6761 の予約 TLD で、**名前解決されない＝どのサーバにも接続しない**。
+1. ST の D1 にダミーを1件だけ投入する。`schedule_url` の `.invalid` は RFC 6761 の予約 TLD で、**名前解決されない＝どのサーバにも接続しない**。`fetchWithUA()` は DNS 失敗も非 2xx も throw するため、確実に `fetch_failed` に落ちる。
+
+**`--command` は1行で渡すこと。** 複数行のまま端末に貼ると、シェルのペースト解釈で SQL が `--command` の値として渡らず exit code 1 で失敗する（2026-07-26 に実際に発生）。
 
 ```
-pnpm -F @cinema/api exec wrangler d1 execute cinema_hashigo_st --remote --command "
-INSERT INTO theaters (id,name,short_name,status,lat,lng,nearest_station,walk_min_from_sta,
-  schedule_url,fetch_method,extract_method,fetch_day_mode,fetch_days,official_url,
-  terms_note,terms_checked_at,robots_status)
-VALUES ('thr_verify_retry','【検証用】到達不能ダミー','検証用','paused',34.7025,135.4959,'梅田',1,
-  'https://unreachable.invalid/schedule','static','text','single',1,'https://unreachable.invalid/',
-  'P1-6 Queues再配信の検証用。実在の劇場ではない。検証後 retired にする','2026-07-26T00:00:00Z','allowed');
-"
+pnpm -F @cinema/api exec wrangler d1 execute cinema_hashigo_st --remote --command "INSERT INTO theaters (id,name,short_name,status,lat,lng,nearest_station,walk_min_from_sta,schedule_url,fetch_method,extract_method,fetch_day_mode,fetch_days,official_url,terms_note,terms_checked_at,robots_status) VALUES ('thr_verify_retry','【検証用】到達不能ダミー','検証用','paused',34.7025,135.4959,'梅田',1,'https://unreachable.invalid/schedule','static','text','single',1,'https://unreachable.invalid/','P1-6 Queues再配信の検証用。実在の劇場ではない。検証後 retired にする','2026-07-26T00:00:00Z','allowed');"
+```
+
+投入後の確認（`paused` で入っていること。`active` になっていると cron の対象に混ざる）:
+
+```
+pnpm -F @cinema/api exec wrangler d1 execute cinema_hashigo_st --remote --command "SELECT id,name,status,schedule_url FROM theaters WHERE id='thr_verify_retry';"
 ```
 
 2. 管理サイト（ブラウザ・Access ログイン）→ 劇場マスタ →「【検証用】到達不能ダミー」→「取込を実行」。
