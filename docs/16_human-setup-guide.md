@@ -172,6 +172,85 @@ api パッケージ側に必要なシークレットが生じた場合は Claude
 - 受入フロー（`06` §9 / `07` §2.3。管理サイトが UI で担保）: 登録は `paused` → 手動取込 → **レビューキューで全件目視（あなたの作業）** → 3日連続 succeeded → `active` 化。
 - 3日間の観察は複数館並行でよい。JS 描画サイト（大手チェーン）は P4-7（rendered 対応）完了後に追加する。
 
+### 4.4 P1-6 の ST 検証（実 Queues 再配信 / 実 Cron 発火）
+
+P1-6（Cron + Queues 配線）の実装は P1 で完了しているが、**ローカルのエミュレーションでは再現しない2点**（Queues のネイティブ再配信・Cron の実発火）を ST で観測して初めて Done になる（`09_roadmap.md` P1-6 / P4-0 の残項目）。判定ロジック自体は `packages/ingest/src/__tests__/index.spec.ts` で固定済みなので、ここで見るのは「実インフラが設定どおりに振る舞うか」だけ。
+
+**前提**: 5館 active（§4.3 / P4-8）完了後。
+
+**取得マナー上の注意**: ST での検証も先方サイトへの実アクセスを消費する。N-06（1劇場1日1セッション）により、Step B を実施する日は**手動取込を一切行わない**こと。
+
+#### Step A: Queues の実リトライ（先方サイトへのアクセス **ゼロ**・所要約15分）
+
+実劇場を故意に失敗させる必要はない。到達不能な URL を持つ **`paused` の検証用ダミー劇場**で観測する。`paused` でも手動取込が通るのは、`assertComplianceGate` の status チェックが `trigger='cron'` のときだけ効くため（`active` ではないので `/plan` にも出ない）。
+
+1. ST の D1 にダミーを1件だけ投入する。`schedule_url` の `.invalid` は RFC 6761 の予約 TLD で、**名前解決されない＝どのサーバにも接続しない**。`fetchWithUA()` は DNS 失敗も非 2xx も throw するため、確実に `fetch_failed` に落ちる。
+
+**`--command` は1行で渡すこと。** 複数行のまま端末に貼ると、シェルのペースト解釈で SQL が `--command` の値として渡らず exit code 1 で失敗する（2026-07-26 に実際に発生）。
+
+```
+pnpm -F @cinema/api exec wrangler d1 execute cinema_hashigo_st --remote --command "INSERT INTO theaters (id,name,short_name,status,lat,lng,nearest_station,walk_min_from_sta,schedule_url,fetch_method,extract_method,fetch_day_mode,fetch_days,official_url,terms_note,terms_checked_at,robots_status) VALUES ('thr_verify_retry','【検証用】到達不能ダミー','検証用','paused',34.7025,135.4959,'梅田',1,'https://unreachable.invalid/schedule','static','text','single',1,'https://unreachable.invalid/','P1-6 Queues再配信の検証用。実在の劇場ではない。検証後 retired にする','2026-07-26T00:00:00Z','allowed');"
+```
+
+投入後の確認（`paused` で入っていること。`active` になっていると cron の対象に混ざる）:
+
+```
+pnpm -F @cinema/api exec wrangler d1 execute cinema_hashigo_st --remote --command "SELECT id,name,status,schedule_url FROM theaters WHERE id='thr_verify_retry';"
+```
+
+2. 管理サイト（ブラウザ・Access ログイン）→ 劇場マスタ →「【検証用】到達不能ダミー」→「取込を実行」。
+3. Workers Logs（§6.1）を約15分追い、以下の順で出ることを確認する:
+
+| 経過 | イベント | 見るポイント |
+|---|---|---|
+| t+0 | `admin.enqueue.ingest` → `queue.ingest.start attempt=1` → `run.fetch.fail` → `queue.ingest.retry delaySeconds=300` | 1回目で即 ack されない |
+| t+5分 | `queue.ingest.start attempt=2` → `queue.ingest.retry delaySeconds=600` | **指定した遅延で実際に再配信されるか**（本命） |
+| t+15分 | `queue.ingest.start attempt=3` → `queue.ingest.done status=fetch_failed` | 打ち切り |
+| t+15分 | Slack に `🛑 取込失敗(fetch_failed)` が **1通だけ** | attempt 1・2 が silent で抑止されているか |
+| 以降 | 4回目が来ない | `max_retries=3` + `ack` が効いているか |
+
+**再配信の間隔は Workers Logs より D1 で見るほうが確実**（ログの絞り込みは時間窓を外すと簡単に取りこぼす。実際に 2026-07-26 の検証では、ログを見て「実行されていない」と誤認しかけた）。attempt ごとに新しい run 行が立つので、`started_at` の差がそのまま再配信間隔になる:
+
+```
+pnpm -F @cinema/api exec wrangler d1 execute cinema_hashigo_st --remote --command "SELECT id,trigger,status,started_at,error_message FROM ingest_runs WHERE theater_id='thr_verify_retry' ORDER BY started_at;"
+```
+
+4. 後片付け: 管理サイトでダミーを **retired** にする（DELETE しない。`ingest_runs` の履歴と参照整合を残すため）。`fetch_failed` の run が3行残るが、これは実際に3回アクセスを試みた記録なので正しい（`countTodaySiteFetches` にも3回と数えられる）。
+
+**実施結果（2026-07-26・ST。再実行時の期待値として）**: 3 run すべて `fetch_failed`（`trigger=manual`）。間隔は **301.2秒 / 601.5秒**（設計値 300/600・誤差1秒未満）、**3回目で打ち切り**（4回目の配信が来ないことを +14分で確認）、**Slack は3回目のみ1通**。全体所要 15分3秒。
+なお `.invalid` への fetch は DNS エラーの throw ではなく **Cloudflare が HTTP 530 を返す**ため、`fetchWithUA()` の `!res.ok` 側で throw する（`error_message` は `HTTP 530 for https://unreachable.invalid/schedule`、`log.ts` の分類は network ではなく **http/530**）。`fetch_failed` に確定する点は同じ。
+
+#### Step B: 実 Cron の発火（実5館・その日の唯一のセッション）
+
+ST の cron は「revert 忘れで毎日先方を叩く」のが最大のリスクなので、**日付を固定した one-shot 式**を使う（消し忘れても年1回しか鳴らない）。
+
+1. `packages/ingest/wrangler.toml` の `[env.st]` に一時追加（例: 7/28 15:30 JST = 06:30 UTC）:
+
+```toml
+[env.st.triggers]
+crons = ["30 6 28 7 *"]
+```
+
+2. `chore/p1-6-st-cron-verify` ブランチ → `develop` にマージ（Actions が ST に自動デプロイ。ADR-0016）。**発火予定時刻の10分前までに**デプロイを終えておく。
+3. 発火後に確認:
+   - `cron.dispatch.done theaters=5`
+   - `queue.ingest.start trigger=cron` が **5件直列**に流れる（`max_batch_size=1` / `max_concurrency=1`）
+   - 各 `run.done status=succeeded`。管理サイトのダッシュボードで「本日の取込状況」5/5
+4. **所要時間を記録する**（Step C）。
+5. 追加した `[env.st.triggers]` を revert して `develop` へ（ST の Cron を原則 OFF に戻す）。
+
+#### Step C: サイクル時間の実測と N-02 の突合
+
+Step B のログで **`cron.dispatch.done` から最後の `run.done` までの経過時間**を必ず記録する。現状これはどこにも実測がなく、N-02（対象日の前日 06:00 JST までに取込完了）を満たせるかの判断材料が無い。
+
+- consumer は `max_concurrency=1` の完全直列、1 run の予算は `RUN_BUDGET_MS`=12分 → 最悪 5館 × 12分 ≒ **60分**
+- prod の取込 cron は 21:00 UTC = **06:00 JST 開始**。最悪ケースでは完了が 07:00 JST になり、N-02 を額面上満たさない
+- 実測が十分短ければ現行のままでよい。長ければ prod の cron 前倒し（例 20:00 UTC = 05:00 JST）を **P5-7 の前に**判断する
+
+#### 検証できないもの（既知）
+
+`scheduled()` の TravelMatrix 分岐は `controller.cron` の**文字列リテラル完全一致**（`'0 18 * * 1'`）なので、one-shot 式では必ず取込側に落ちる。ST で実 cron から通すには `"0 18 * * 1"` をそのまま入れて月曜まで待つしかない。手動再生成ボタンは P4-6 で E2E 済み・分岐はユニットテストで固定済みのため、**実 cron での確認は prod 初回の月曜にログで行う**運用とする。
+
 ## 5. 本番昇格（P5-7 の前後）
 
 ### 5.1 独自ドメイン
