@@ -91,6 +91,15 @@ max_concurrency = 1
 # 指数バックオフ（初回5分後）は msg.retry({delaySeconds}) で consumer 側が明示的に計算する（queue()）。
 max_retries = 3
 
+# ⚠ 一時設定（P1-6 Step B の実 Cron 検証。docs/16 §4.4）。**検証後にこのブロックを削除する。**
+# ST の Cron は原則 OFF（docs/14 §3.2。開発中に先方サイトを毎日叩かないため）。検証したい
+# 期間だけ一時有効化する運用で、消し忘れ対策に**日付固定の one-shot 式**を使う（毎日式にしない）。
+# 0 8 26 7 * = 2026-07-26 08:00 UTC = 17:00 JST に1回だけ発火（revert 忘れでも年1回）。
+# MATRIX_CRON（'0 18 * * 1'）と一致しないため scheduled() は取込ディスパッチ側に落ちる
+# （index.spec.ts で固定済み。TravelMatrix 分岐は ST では検証できない＝prod 初回月曜に確認）。
+[env.st.triggers]
+crons = ["0 8 26 7 *"]
+
 # --- 本番環境（Cron 有効。21:00 UTC = 06:00 JST。N-02 の鮮度要件）---
 [env.prod]
 name = "cinema-ingest-prod"
