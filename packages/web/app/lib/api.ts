@@ -1,4 +1,4 @@
-import { Movie, type PlanRequest, PlanResponse } from '@cinema/shared'
+import { Movie, Plan, type PlanRequest, PlanResponse, SharePlanResponse } from '@cinema/shared'
 import { z } from 'zod'
 
 // コア API クライアント（docs/04）。型は @cinema/shared の zod が単一の真実。
@@ -47,4 +47,37 @@ export async function postPlan(req: PlanRequest): Promise<ApiResult<PlanResponse
   } catch (e) {
     return { ok: false, status: 0, code: 'NETWORK', message: (e as Error).message }
   }
+}
+
+// ---- 共有プラン（P5-2。API は P5-1）----
+
+// 共有 URL の発行（結果画面の [🔗 共有] ボタン）
+export async function sharePlan(plan: Plan): Promise<ApiResult<SharePlanResponse>> {
+  try {
+    const res = await fetch(`${API_BASE}/v1/plans`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ plan }),
+    })
+    if (!res.ok) return toFailure(res)
+    return { ok: true, data: SharePlanResponse.parse(await res.json()) }
+  } catch (e) {
+    return { ok: false, status: 0, code: 'NETWORK', message: (e as Error).message }
+  }
+}
+
+// 共有プランの取得（共有ページの SSR loader / og.png から呼ぶ。期限切れ・不存在は 404）
+export async function fetchSharedPlan(planId: string): Promise<ApiResult<Plan>> {
+  try {
+    const res = await fetch(`${API_BASE}/v1/plans/${encodeURIComponent(planId)}`)
+    if (!res.ok) return toFailure(res)
+    return { ok: true, data: Plan.parse(await res.json()) }
+  } catch (e) {
+    return { ok: false, status: 0, code: 'NETWORK', message: (e as Error).message }
+  }
+}
+
+// 共有ページの .ics リンク（サーバ生成・P5-1）
+export function sharedPlanIcsUrl(planId: string): string {
+  return `${API_BASE}/v1/plans/${encodeURIComponent(planId)}/ics`
 }
