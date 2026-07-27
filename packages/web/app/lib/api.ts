@@ -1,4 +1,11 @@
-import { Movie, Plan, type PlanRequest, PlanResponse, SharePlanResponse } from '@cinema/shared'
+import {
+  Movie,
+  Plan,
+  type PlanRequest,
+  PlanResponse,
+  SharePlanResponse,
+  Theater,
+} from '@cinema/shared'
 import { z } from 'zod'
 
 // コア API クライアント（docs/04）。型は @cinema/shared の zod が単一の真実。
@@ -24,6 +31,18 @@ async function toFailure(res: Response): Promise<ApiFailure> {
 }
 
 const MoviesResponse = z.object({ movies: z.array(Movie) })
+const TheatersResponse = z.object({ theaters: z.array(Theater) })
+
+// 対応劇場一覧（LP の対応劇場セクション。名前と位置のみで上映情報は含まない=原則1）
+export async function fetchTheaters(): Promise<ApiResult<Theater[]>> {
+  try {
+    const res = await fetch(`${API_BASE}/v1/theaters`)
+    if (!res.ok) return toFailure(res)
+    return { ok: true, data: TheatersResponse.parse(await res.json()).theaters }
+  } catch (e) {
+    return { ok: false, status: 0, code: 'NETWORK', message: (e as Error).message }
+  }
+}
 
 export async function fetchMovies(date: string): Promise<ApiResult<Movie[]>> {
   try {
