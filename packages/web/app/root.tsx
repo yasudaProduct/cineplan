@@ -1,6 +1,15 @@
-import { isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router'
+import {
+  isRouteErrorResponse,
+  Link,
+  Links,
+  Meta,
+  Outlet,
+  Scripts,
+  ScrollRestoration,
+} from 'react-router'
 import type { Route } from './+types/root'
 import './app.css'
+import { CONTACT_EMAIL } from './lib/site'
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -17,9 +26,27 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body className="min-h-screen flex flex-col">
         <div className="flex-1">{children}</div>
-        {/* 免責の全ページ掲示（docs/08 §5） */}
+        {/* 免責の全ページ掲示（docs/08 §5）+ 法務リンク（P5-4・07 §1.2/§1.6） */}
         <footer className="mt-8 border-t border-neutral-200 bg-white px-4 py-4 text-center text-xs text-neutral-500">
-          上映時間は変更される場合があります。必ず各劇場の公式サイトでご確認ください。移動時間・経路は目安です。
+          <p>
+            上映時間は変更される場合があります。必ず各劇場の公式サイトでご確認ください。移動時間・経路は目安です。
+          </p>
+          <p className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1">
+            <Link to="/terms" className="hover:underline">
+              利用規約
+            </Link>
+            <Link to="/privacy" className="hover:underline">
+              プライバシーポリシー
+            </Link>
+            <Link to="/bot" className="hover:underline">
+              クローラについて
+            </Link>
+            {CONTACT_EMAIL && (
+              <a href={`mailto:${CONTACT_EMAIL}`} className="hover:underline">
+                お問い合わせ
+              </a>
+            )}
+          </p>
         </footer>
         <ScrollRestoration />
         <Scripts />
