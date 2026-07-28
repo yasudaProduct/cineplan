@@ -6,6 +6,7 @@ import { buildTravelMatrix } from './cron/travel-matrix'
 import { listActiveTheaters } from './db/theaters'
 import type { Env } from './env'
 import { logError, logInfo } from './log'
+import { checkDailyCostAlert } from './worker/cost-alert'
 import { sendSlack } from './worker/notify'
 import { FETCH_FAILED_NOTIFY_AT_ATTEMPT, ingestTheater } from './worker/pipeline'
 import { reextractFromSnapshot } from './worker/reextract'
@@ -98,6 +99,7 @@ export default {
             runId: r.runId,
             status: r.status,
           })
+          await checkDailyCostAlert(env, r.runId) // LLM コスト急増の閾値跨ぎ判定（P5-6）
           msg.ack()
           continue
         }
@@ -132,6 +134,7 @@ export default {
             runId: result.runId,
             status: result.status,
           })
+          await checkDailyCostAlert(env, result.runId) // LLM コスト急増の閾値跨ぎ判定（P5-6）
           msg.ack()
         }
       } catch (e) {

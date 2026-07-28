@@ -180,7 +180,8 @@
   - **オーナー確認待ち（docs/16 §5.4）**: ①文面の最終確認 ②**連絡先メールアドレスの決定**（`app/lib/site.ts` の `CONTACT_EMAIL`。null の間は「準備中」表示で mailto を出さない）。/bot と UA のドメイン部分（`example.com`）は P5-7 のドメイン確定時に ingest 側 `USER_AGENT` と同時更新。
 - [x] **P5-5 データ保持 Cron**（03_data-model.md §4 の各種期限削除）（実装ブランチ `feat/p5-5-retention-cron`）
   - Done ✓（2026-07-28）: `runRetention()`（`cron/retention.ts`）を prod 日次 Cron `0 17 * * *`（02:00 JST）に配線（`scheduled()` の3本目の分岐）。1つの `db.batch`＝1トランザクションで screenings(30日) → reviews(解決後90日・pending 除外) → runs(180日) → shared_plans(期限切れ) を削除。**docs/11 §7 の SQL を2点正確化**（docs 先行）: ①日時列は `datetime()` ラップ（ISO `T` 形式と `datetime('now')` のスペース形式は文字列比較非互換＝P5-1 で発見した問題の再発防止）②runs は `NOT IN (SELECT ingest_run_id FROM extraction_reviews)` ガード（D1 は FK を既定で強制し batch 全体が rollback するため。pending 長期残存時は当該 run をスキップし解決後の Cron で自然に消える）。管理ダッシュボードに手動実行ボタン（`POST /admin/retention/run`。Cron の無い ST での検証・随時実行用）。**R2 スナップショット90日は ST バケットにライフサイクルルール適用済み**（`expire-snapshots-90d`・prefix `raw/`。prod は P5-7 = 16 §5.2 に手順追記）。ユニット7件 + ローカル D1 E2E（境界データ9行: 期限超が消え期限内と pending・FK ガード対象が残ることを実 SQL で確認）。prod 実 cron の初回実行はデプロイ後にログで確認する運用（TravelMatrix と同じ）。
-- [ ] **P5-6 コスト監視ダッシュボード仕上げ**（LLM トークン日次・アラート）
+- [x] **P5-6 コスト監視ダッシュボード仕上げ**（LLM トークン日次・アラート）（実装ブランチ `feat/p5-6-cost-monitoring`）
+  - Done ✓（2026-07-28）: docs/06 §8 のアラートを実装 — **JST 当日の in-tokens 合計が閾値（既定 500万・`COST_ALERT_DAILY_IN_TOKENS` var で上書き可）を超えたら Slack 警告**（N-07）。判定は run 完了ごとの**閾値跨ぎ方式**（この run で初めて閾値以上になったときだけ通知。Queue が直列消費のため KV 等の通知済みフラグ無しで1日1回に収まる・日付が変われば自然に再武装）。呼出点は queue() の取込/再抽出完了後 + 同期 `/admin/ingest` の3箇所（全経路カバー）。アラート失敗は握りつぶし run の成否に影響させない。ダッシュボードの LLM ウィジェットに「本日 in: X / 警告閾値 Y」を追加（超過時は警告色）。7日スパークライン（P4-2）は既存のまま。ユニット7件（跨ぎ/未満/再通知なし/ちょうど到達/var 上書き/不正値/失敗握りつぶし）+ ローカル実機でダッシュボード表示確認。301 passed。
 - [ ] **P5-7 本番昇格**（`14_environments-deploy.md`）
   - prod 用 D1/R2/KV/Queues 作成、`wrangler secret` で prod シークレット投入、Cron を prod で有効化、初回 `v0.1.0` タグで承認デプロイ。ST で一通り検証済みを前提とする。
   - Done: prod で取込→算出→Web が動作し、管理サイトに Access がかかっている。
