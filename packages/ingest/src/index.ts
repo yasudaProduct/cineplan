@@ -1,6 +1,7 @@
 import type { IngestTrigger } from '@cinema/shared'
 import { Hono } from 'hono'
 import { adminApp } from './admin'
+import { runRetention } from './cron/retention'
 import { buildTravelMatrix } from './cron/travel-matrix'
 import { listActiveTheaters } from './db/theaters'
 import type { Env } from './env'
@@ -18,6 +19,9 @@ export type IngestQueueMessage =
 
 // TravelMatrix 週次再生成の cron パターン（wrangler.toml [env.prod.triggers] と一致させる。docs/14 §3.2）
 const MATRIX_CRON = '0 18 * * 1'
+
+// データ保持の日次削除（P5-5・docs/11 §7）。17:00 UTC = 02:00 JST（取込 21:00 UTC と離す）
+const RETENTION_CRON = '0 17 * * *'
 
 // fetch_failed の指数バックオフ（初回5分後・以降倍々。docs/06 §7）。
 const RETRY_BASE_DELAY_SECONDS = 300
@@ -48,6 +52,7 @@ export default {
   // Cron（prod のみ有効・docs/14 §3.2）。controller.cron で分岐:
   // - 毎日 21:00 UTC: active 劇場を Queue 投入（P1-6）
   // - 月曜 18:00 UTC: TravelMatrix 週次再生成（P4-6・ADR-0014）
+  // - 毎日 17:00 UTC: データ保持の期限削除（P5-5・docs/11 §7）
   async scheduled(controller, env): Promise<void> {
     if (controller.cron === MATRIX_CRON) {
       const r = await buildTravelMatrix(env)
@@ -55,6 +60,11 @@ export default {
         env.SLACK_WEBHOOK_URL,
         `🚃 TravelMatrix 再生成: ${r.theaters}劇場 ${r.pairs}ペア（更新${r.updated}/温存${r.carried}/欠損${r.missing}${r.skippedWrite ? '・全滅のため未書込' : ''}）`,
       )
+      return
+    }
+    if (controller.cron === RETENTION_CRON) {
+      const r = await runRetention(env.DB)
+      logInfo('retention.done', { ...r })
       return
     }
     const theaters = await listActiveTheaters(env.DB)

@@ -1,5 +1,6 @@
 import { TheaterStatus, TheaterUpsert } from '@cinema/shared'
 import { Hono } from 'hono'
+import { runRetention } from '../cron/retention'
 import { buildTravelMatrix, readTravelMatrixMeta } from '../cron/travel-matrix'
 import { jstDayStartIso, loadDashboard, todayJst } from '../db/admin-queries'
 import {
@@ -82,6 +83,15 @@ adminApp.post('/travel-matrix/rebuild', async (c) => {
   logInfo('admin.matrix.rebuild', {})
   const r = await buildTravelMatrix(c.env)
   const msg = `TravelMatrix 再生成: ${r.theaters}劇場 ${r.pairs}ペア（更新${r.updated}/温存${r.carried}/欠損${r.missing}${r.skippedWrite ? '・全滅のため未書込' : ''}）`
+  return c.redirect(`/admin?msg=${encodeURIComponent(msg)}`)
+})
+
+// データ保持の期限削除を手動実行（P5-5・docs/11 §7）。prod は日次 Cron が回すが、
+// Cron を持たない ST での検証・随時実行用に置く（外部アクセスなし・D1 の削除のみ）。
+adminApp.post('/retention/run', async (c) => {
+  const r = await runRetention(c.env.DB)
+  logInfo('retention.done', { ...r, trigger: 'manual' })
+  const msg = `データ保持削除: screenings ${r.screenings} / reviews ${r.reviews} / runs ${r.ingestRuns} / sharedPlans ${r.sharedPlans} 件`
   return c.redirect(`/admin?msg=${encodeURIComponent(msg)}`)
 })
 

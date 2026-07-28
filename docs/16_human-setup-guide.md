@@ -284,6 +284,8 @@ crons = ["30 6 28 7 *"]
 ### 5.2 prod リソース・トークン・Secrets
 
 1. §3.2 と同様に prod リソースを作成（Claude Code 代行可）: `cinema_hashigo_prod` / `cinema-kv-prod` / `cinema-snapshots-prod` / `cinema-ingest-queue-prod`。
+   - `cinema-snapshots-prod` には R2 ライフサイクルルールを適用する（Claude Code 代行可。docs/03 §4 のスナップショット90日。ST には P5-5 で適用済み）:
+     `wrangler r2 bucket lifecycle add cinema-snapshots-prod --name "expire-snapshots-90d" --prefix "raw/" --expire-days 90 --force`
 2. §3.3 と同様に **prod 用 API トークン** `cineplan-prod-deploy` を別発行。
 3. GitHub Environment `prod` の Secrets に `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` を登録（§3.4）。Required reviewers 設定済みであることを再確認。
 
