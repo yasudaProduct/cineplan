@@ -425,26 +425,31 @@ export async function approveReview(db: D1Database, reviewId: string) {
 `03_data-model.md` §4 の期限削除を1つの Cron で実行する。
 
 ```sql
--- screenings: business_date が 30日以上前
+-- screenings: business_date が 30日以上前（YYYY-MM-DD 同士の文字列比較で安全）
 DELETE FROM screenings
  WHERE business_date < date('now','-30 days');
 
--- ingest_runs: started_at が 180日以上前
+-- ingest_runs: started_at が 180日以上前。
+-- extraction_reviews から参照されている行は消さない（pending が長期残存した場合の
+-- FK 違反ガード。D1 は FK を既定で強制するため、違反すると batch 全体が rollback する。
+-- 当該 run はレビュー解決→90日経過後の Cron で自然に消える）
 DELETE FROM ingest_runs
- WHERE started_at < datetime('now','-180 days');
+ WHERE datetime(started_at) < datetime('now','-180 days')
+   AND id NOT IN (SELECT ingest_run_id FROM extraction_reviews);
 
 -- shared_plans: 期限切れ
 DELETE FROM shared_plans
- WHERE expires_at < datetime('now');
+ WHERE datetime(expires_at) < datetime('now');
 
 -- extraction_reviews: 解決済み(approved/rejected)かつ 90日以上前
 DELETE FROM extraction_reviews
  WHERE status <> 'pending'
-   AND created_at < datetime('now','-90 days');
+   AND datetime(created_at) < datetime('now','-90 days');
 ```
 
-- R2 スナップショット（90日）は R2 のライフサイクルルールで別途削除（D1 Cron の対象外）。
-- 削除順は screenings → ingest_runs の順（screenings が ingest_run を参照するため、参照先を後に消す）。ただし FK は宣言のみなので順序は厳密には問わない。運用上は上記順を推奨。
+- **左辺を `datetime()` でラップする理由（2026-07-28 修正・P5-5）**: アプリが書く列（`started_at`・`expires_at`）は ISO `T`+`Z` 形式（§3）、`datetime('now')` はスペース区切り形式で、生の文字列比較では `'T'(0x54) > ' '(0x20)` により**同日内の期限切れ判定が最大1日遅れる**。`datetime()` は両形式をパースして正規形に揃える。インデックスは効かなくなるが対象テーブルは最大でも数万行（N-05 前提で screenings 45,000行）・日次1回のため問題ない。`business_date` は `YYYY-MM-DD` 同士なのでラップ不要。
+- R2 スナップショット（90日）は R2 のライフサイクルルールで別途削除（D1 Cron の対象外）。ST/prod のバケットへのルール適用は P5-5（ST）/ P5-7（prod）。
+- 削除順は screenings → ingest_runs の順（screenings が ingest_run を参照するため、参照先を後に消す）。ただし FK は宣言のみなので順序は厳密には問わない。運用上は上記順を推奨。extraction_reviews も ingest_runs を参照するため ingest_runs より先に消す。
 
 ## 8. D1 固有の注意点
 

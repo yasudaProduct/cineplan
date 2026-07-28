@@ -29,6 +29,12 @@ const buildTravelMatrixMock = vi.fn(async () => ({
   missing: 0,
   skippedWrite: false,
 }))
+const runRetentionMock = vi.fn(async () => ({
+  screenings: 12,
+  reviews: 1,
+  ingestRuns: 3,
+  sharedPlans: 2,
+}))
 const listActiveTheatersMock = vi.fn(async (): Promise<{ id: string }[]> => [])
 const sendSlackMock = vi.fn(async () => {})
 
@@ -41,6 +47,7 @@ vi.mock('../worker/reextract', () => ({
 }))
 vi.mock('../admin', () => ({ adminApp: new Hono() }))
 vi.mock('../cron/travel-matrix', () => ({ buildTravelMatrix: buildTravelMatrixMock }))
+vi.mock('../cron/retention', () => ({ runRetention: runRetentionMock }))
 vi.mock('../db/theaters', () => ({ listActiveTheaters: listActiveTheatersMock }))
 vi.mock('../worker/notify', () => ({ sendSlack: sendSlackMock }))
 
@@ -69,6 +76,7 @@ beforeEach(() => {
   ingestTheaterMock.mockClear()
   reextractFromSnapshotMock.mockClear()
   buildTravelMatrixMock.mockClear()
+  runRetentionMock.mockClear()
   listActiveTheatersMock.mockClear()
   sendSlackMock.mockClear()
 })
@@ -196,6 +204,7 @@ describe('queue() — fetch_failed の指数バックオフと打ち切り（doc
 describe('scheduled() — cron 分岐（docs/14 §3.2）', () => {
   const INGEST_CRON = '0 21 * * *' // 毎日 06:00 JST（N-02 の鮮度要件）
   const MATRIX_CRON = '0 18 * * 1' // 月曜 18:00 UTC = 火曜 03:00 JST（ADR-0014）
+  const RETENTION_CRON = '0 17 * * *' // 毎日 02:00 JST（P5-5・docs/11 §7）
 
   it('取込 cron は active 劇場を全件 trigger=cron で Queue 投入する（P1-6 の本体）', async () => {
     listActiveTheatersMock.mockResolvedValueOnce([
@@ -227,6 +236,22 @@ describe('scheduled() — cron 分岐（docs/14 §3.2）', () => {
     expect(listActiveTheatersMock).not.toHaveBeenCalled()
     expect(send).not.toHaveBeenCalled()
     expect(sendSlackMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('RETENTION_CRON はデータ保持削除のみ実行し、取込・行列は動かさない（P5-5）', async () => {
+    const { env, send } = fakeEnv()
+    await handler.scheduled({ cron: RETENTION_CRON } as never, env as never)
+    expect(runRetentionMock).toHaveBeenCalledTimes(1)
+    expect(listActiveTheatersMock).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
+    expect(buildTravelMatrixMock).not.toHaveBeenCalled()
+  })
+
+  it('取込 cron はデータ保持削除を動かさない（分岐の排他）', async () => {
+    listActiveTheatersMock.mockResolvedValueOnce([{ id: 'thr_a' }])
+    const { env } = fakeEnv()
+    await handler.scheduled({ cron: INGEST_CRON } as never, env as never)
+    expect(runRetentionMock).not.toHaveBeenCalled()
   })
 
   it('MATRIX_CRON 以外の cron 式は取込ディスパッチに落ちる（ST 一時 cron が行列側に吸われない）', async () => {

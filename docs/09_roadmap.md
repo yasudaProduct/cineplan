@@ -178,7 +178,8 @@
 - [x] **P5-4 法務ページ**（利用規約・プライバシー・/bot・免責表示）← `08_compliance-policy.md` §3, §5（実装ブランチ `feat/p5-4-legal-pages`）
   - Done ✓（2026-07-27・**文面はドラフト**）: `/terms`（無保証・予約決済は劇場公式・禁止事項）/ `/privacy`（個人情報を取得・保存しない=実装と一致: 会員登録なし・localStorage は端末内のみ・現在地は算出のみで非保存・共有プランは内容のみ30日・独自 Cookie 不使用・LLM 送信は劇場公開ページのみ 08 §4）/ `/bot`（UA `CinemaHashigoBot/0.1`・1日1セッション/最大10ページ/5秒間隔/直列/30秒タイムアウト/スナップショット再処理/robots 尊重・停止依頼→即時停止。08 §3 の実装事実と一致）。全ページ共通フッター（root.tsx）に法務リンクを追加（P5-3 で保留した分）。免責掲示は従来どおり（08 §5）。
   - **オーナー確認待ち（docs/16 §5.4）**: ①文面の最終確認 ②**連絡先メールアドレスの決定**（`app/lib/site.ts` の `CONTACT_EMAIL`。null の間は「準備中」表示で mailto を出さない）。/bot と UA のドメイン部分（`example.com`）は P5-7 のドメイン確定時に ingest 側 `USER_AGENT` と同時更新。
-- [ ] **P5-5 データ保持 Cron**（03_data-model.md §4 の各種期限削除）
+- [x] **P5-5 データ保持 Cron**（03_data-model.md §4 の各種期限削除）（実装ブランチ `feat/p5-5-retention-cron`）
+  - Done ✓（2026-07-28）: `runRetention()`（`cron/retention.ts`）を prod 日次 Cron `0 17 * * *`（02:00 JST）に配線（`scheduled()` の3本目の分岐）。1つの `db.batch`＝1トランザクションで screenings(30日) → reviews(解決後90日・pending 除外) → runs(180日) → shared_plans(期限切れ) を削除。**docs/11 §7 の SQL を2点正確化**（docs 先行）: ①日時列は `datetime()` ラップ（ISO `T` 形式と `datetime('now')` のスペース形式は文字列比較非互換＝P5-1 で発見した問題の再発防止）②runs は `NOT IN (SELECT ingest_run_id FROM extraction_reviews)` ガード（D1 は FK を既定で強制し batch 全体が rollback するため。pending 長期残存時は当該 run をスキップし解決後の Cron で自然に消える）。管理ダッシュボードに手動実行ボタン（`POST /admin/retention/run`。Cron の無い ST での検証・随時実行用）。**R2 スナップショット90日は ST バケットにライフサイクルルール適用済み**（`expire-snapshots-90d`・prefix `raw/`。prod は P5-7 = 16 §5.2 に手順追記）。ユニット7件 + ローカル D1 E2E（境界データ9行: 期限超が消え期限内と pending・FK ガード対象が残ることを実 SQL で確認）。prod 実 cron の初回実行はデプロイ後にログで確認する運用（TravelMatrix と同じ）。
 - [ ] **P5-6 コスト監視ダッシュボード仕上げ**（LLM トークン日次・アラート）
 - [ ] **P5-7 本番昇格**（`14_environments-deploy.md`）
   - prod 用 D1/R2/KV/Queues 作成、`wrangler secret` で prod シークレット投入、Cron を prod で有効化、初回 `v0.1.0` タグで承認デプロイ。ST で一通り検証済みを前提とする。

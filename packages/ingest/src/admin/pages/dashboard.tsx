@@ -84,6 +84,12 @@ export function DashboardPage({
               再生成（劇場数×(劇場数-1) 件を1秒間隔で取得）
             </button>
           </form>
+          {/* データ保持の期限削除（P5-5・docs/11 §7）。prod は日次 Cron・ST は手動 */}
+          <form method="post" action="/admin/retention/run" style="margin-top:8px">
+            <button type="submit" class="secondary">
+              🧹 データ保持削除を実行（期限切れの screenings/runs/reviews/共有プラン）
+            </button>
+          </form>
         </div>
       </div>
 
