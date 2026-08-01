@@ -7,11 +7,13 @@ import { Flash, jst, sparkline } from '../components'
 export function DashboardPage({
   d,
   matrix,
+  alertThreshold,
   msg,
   err,
 }: {
   d: DashboardData
   matrix: TravelMatrixMeta | null
+  alertThreshold: number
   msg?: string
   err?: string
 }) {
@@ -59,6 +61,10 @@ export function DashboardPage({
           </div>
           <div class="small">
             {d.tokenDaily[0]?.day} 〜 {d.tokenDaily[d.tokenDaily.length - 1]?.day}（JST日次）
+          </div>
+          {/* コスト急増アラートの閾値対比（P5-6・docs/06 §8。超過時は Slack 通知済みのはず） */}
+          <div class={`small ${d.todayInTokens >= alertThreshold ? 'warn-text' : ''}`}>
+            本日 in: {d.todayInTokens.toLocaleString()} / 警告閾値 {alertThreshold.toLocaleString()}
           </div>
         </div>
       </div>

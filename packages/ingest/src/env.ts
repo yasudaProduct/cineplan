@@ -17,4 +17,7 @@ export interface Env extends LlmEnv {
   // POST /admin/ingest の保護用共有シークレット。APP_ENV!=='local' では必須（未設定は fail closed）。
   // docs/16 §3.6・docs/09 P4-0。
   ADMIN_TOKEN?: string
+  // LLM コスト急増アラートの日次 in-tokens 閾値（P5-6・docs/06 §8）。
+  // 未設定は既定 5,000,000（cost-alert.ts）。上書きは wrangler var で。
+  COST_ALERT_DAILY_IN_TOKENS?: string
 }

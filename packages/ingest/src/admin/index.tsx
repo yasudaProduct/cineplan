@@ -28,6 +28,7 @@ import {
 import type { Env } from '../env'
 import { logError, logInfo } from '../log'
 import { assertComplianceGate } from '../worker/compliance-guard'
+import { checkDailyCostAlert, dailyInTokenThreshold } from '../worker/cost-alert'
 import { ComplianceGateError, TheaterNotFoundError } from '../worker/errors'
 import { ingestTheater } from '../worker/pipeline'
 import { Layout } from './components'
@@ -55,6 +56,7 @@ adminApp.post('/ingest', async (c) => {
   try {
     logInfo('admin.ingest.sync', { theaterId })
     const result = await ingestTheater(c.env, theaterId, 'manual')
+    await checkDailyCostAlert(c.env, result.runId) // LLM コスト急増の閾値跨ぎ判定（P5-6）
     return c.json(result)
   } catch (e) {
     if (e instanceof TheaterNotFoundError) return c.json({ error: e.message }, 404)
@@ -72,7 +74,13 @@ adminApp.get('/', async (c) => {
   const matrix = await readTravelMatrixMeta(c.env.KV)
   return c.html(
     <Layout title="ダッシュボード" active="dashboard" env={env(c)}>
-      <DashboardPage d={d} matrix={matrix} msg={c.req.query('msg')} err={c.req.query('err')} />
+      <DashboardPage
+        d={d}
+        matrix={matrix}
+        alertThreshold={dailyInTokenThreshold(c.env)}
+        msg={c.req.query('msg')}
+        err={c.req.query('err')}
+      />
     </Layout>,
   )
 })
