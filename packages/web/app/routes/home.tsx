@@ -2,7 +2,7 @@ import { Link } from 'react-router'
 import { fetchTheaters } from '../lib/api'
 import type { Route } from './+types/home'
 
-// LP（P5-3・docs/07 §1.2）。セクション構成はドキュメントを正とする:
+// LP（P5-3・docs/spec/07 §1.2）。セクション構成はドキュメントを正とする:
 // ヒーロー / 価値説明3カード / 使い方3ステップ / 対応劇場 / アプリ導線 / フッター。
 // フッターの法務リンク（利用規約・プライバシー・お問い合わせ）は P5-4 でページと同時に
 // 追加する（先にリンクだけ置かない）。免責は root.tsx の全ページ共通フッターが担う。
@@ -24,7 +24,7 @@ export function meta(_args: Route.MetaArgs) {
   ]
 }
 
-// 対応劇場（劇場名のみ。上映情報は一切出さない=原則1・docs/08 §0）。
+// 対応劇場（劇場名のみ。上映情報は一切出さない=原則1・docs/spec/08 §0）。
 // API 到達不能でも LP は表示する（劇場一覧セクションだけ省略）。
 export async function loader(_args: Route.LoaderArgs) {
   const r = await fetchTheaters()

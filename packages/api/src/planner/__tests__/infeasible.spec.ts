@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { planFromCandidates } from '../index'
 import type { Candidate, PlanContext } from '../types'
 
-// infeasible 判定（P2-4。docs/05 §7 / docs/12 §8 の分岐）
+// infeasible 判定（P2-4。docs/spec/05 §7 / docs/spec/10 §8 の分岐）
 
 const min = (s: string): number => {
   const [h, m] = s.split(':').map(Number)
@@ -42,9 +42,9 @@ function ctx(over: Partial<PlanContext> = {}): PlanContext {
   }
 }
 
-describe('infeasible 判定（docs/05 §7 の判定順）', () => {
+describe('infeasible 判定（docs/spec/05 §7 の判定順）', () => {
   it('候補空（時間帯フィルタで全滅・must無し）→ time_window_too_narrow', () => {
-    // no_screenings（対象日の上映0件）はフィルタ前の件数で plan() 側が判定する（docs/05 §7）
+    // no_screenings（対象日の上映0件）はフィルタ前の件数で plan() 側が判定する（docs/spec/05 §7）
     const res = planFromCandidates(ctx({ cands: [] }), 3)
     expect(res.plans).toEqual([])
     expect(res.infeasible?.reason).toBe('time_window_too_narrow')

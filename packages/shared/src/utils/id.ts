@@ -1,6 +1,6 @@
 import { customAlphabet } from 'nanoid'
 
-// base58（紛らわしい 0/O/I/l を除外）12桁 ≒ 70bit。docs/11 §2。
+// base58（紛らわしい 0/O/I/l を除外）12桁 ≒ 70bit。docs/spec/09 §2。
 const b58 = customAlphabet('123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz', 12)
 
 export type IdPrefix = 'thr' | 'mov' | 'scr' | 'pln' | 'run' | 'rev'

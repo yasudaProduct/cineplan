@@ -1,9 +1,9 @@
 import { z } from 'zod'
 
-// KV 値の契約（docs/03 §5）。ingest（週次バッチ）が書き、api（planner）が読む —
+// KV 値の契約（docs/spec/03 §5）。ingest（週次バッチ）が書き、api（planner）が読む —
 // パッケージ間のデータ契約なので shared に置く（CLAUDE.md ハードルール7）。
 
-// travel-matrix:v{n}（docs/03 §5.1・ADR-0014）。
+// travel-matrix:v{n}（docs/spec/03 §5.1・ADR-0014）。
 // matrix[i][j] = theaters[i] → theaters[j] の所要分（劇場前→劇場前 door-to-door）。
 // 欠損（経路探索失敗・前回値も無い）は null = planner が直線距離推定へフォールバック。
 export const TravelMatrix = z.object({
@@ -18,7 +18,7 @@ export type TravelMatrix = z.infer<typeof TravelMatrix>
 
 export const TRAVEL_MATRIX_KV_KEY = 'travel-matrix:v1'
 
-// station-geo:{駅名}（docs/03 §5.2）。駅名→座標のジオコーディングキャッシュ。TTL 30日。
+// station-geo:{駅名}（docs/spec/03 §5.2）。駅名→座標のジオコーディングキャッシュ。TTL 30日。
 export const StationGeo = z.object({
   lat: z.number(),
   lng: z.number(),

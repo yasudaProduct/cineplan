@@ -26,7 +26,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body className="min-h-screen flex flex-col">
         <div className="flex-1">{children}</div>
-        {/* 免責の全ページ掲示（docs/08 §5）+ 法務リンク（P5-4・07 §1.2/§1.6） */}
+        {/* 免責の全ページ掲示（docs/spec/08 §5）+ 法務リンク（P5-4・07 §1.2/§1.6） */}
         <footer className="mt-8 border-t border-neutral-200 bg-white px-4 py-4 text-center text-xs text-neutral-500">
           <p>
             上映時間は変更される場合があります。必ず各劇場の公式サイトでご確認ください。移動時間・経路は目安です。

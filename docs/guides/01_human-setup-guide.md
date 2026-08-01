@@ -2,7 +2,7 @@
 
 - Version: 0.1
 - 目的: Claude Code が代行できない・すべきでない作業（アカウント作成・課金・シークレット発行・規約/法務の判断・本番デプロイ承認・目視レビュー）を、実施タイミング順に手順化する。
-- 使い方: `09_roadmap.md` の「人間（オーナー）作業との依存関係」から該当節を参照。作業を終えたら Claude Code に「§x.x 完了」と伝えれば続きを再開できる。
+- 使い方: `plan/01_roadmap.md` の「人間（オーナー）作業との依存関係」から該当節を参照。作業を終えたら Claude Code に「§x.x 完了」と伝えれば続きを再開できる。
 - 注意:
   - 外部サービスの画面・メニュー名・提供条件は変わりうる（本書は 2026-07 時点）。ズレていたら本書を更新する。
   - **シークレット値（APIキー・トークン・Webhook URL）をチャット・コード・コミットに貼らない。** 投入は自分のターミナルか各サービスの画面で行う。
@@ -36,7 +36,7 @@
 | GitHub リポジトリ | `yasudaProduct/cineplan`（origin 設定済み）✅ |
 | Cloudflare | wrangler ログイン済み ✅（プランは Free。Paid 加入は §3.1） |
 
-- P0-6 で追加される CI（typecheck/lint/test）は develop への push で自動的に動き始める（ADR-0016。当初は main pushだったが実運用に合わせて訂正）。deploy-st / deploy-prod は §3 の Secrets 設定まで実デプロイに失敗するが、これは想定内（`09_roadmap.md` P0-6 の Done 条件参照）。
+- P0-6 で追加される CI（typecheck/lint/test）は develop への push で自動的に動き始める（ADR-0016。当初は main pushだったが実運用に合わせて訂正）。deploy-st / deploy-prod は §3 の Secrets 設定まで実デプロイに失敗するが、これは想定内（`plan/01_roadmap.md` P0-6 の Done 条件参照）。
 
 ## 2. P1 開始前
 
@@ -48,7 +48,7 @@
 
 1. https://aistudio.google.com に Google アカウントでログイン。
 2. 「Get API key」→ Create API key。**クレジットカード不要**。無料ティアで始められる。
-3. **無料ティアの注意**: 送信プロンプト（＝抽出対象の HTML）が Google のモデル学習に使われうる（`docs/08 §4` の条件付きで許容 = 公開ページの事実データに限定・個人情報を含むページは対象外）。学習に使わせたくない場合のみ、AI Studio で課金を有効化し有料ティアにする（無料の利点は薄れる）。将来、学習利用を完全に避けたくなったら Cloudflare Workers AI へ差し替え可能（抽出クライアントは抽象化済み）。
+3. **無料ティアの注意**: 送信プロンプト（＝抽出対象の HTML）が Google のモデル学習に使われうる（`docs/spec/08 §4` の条件付きで許容 = 公開ページの事実データに限定・個人情報を含むページは対象外）。学習に使わせたくない場合のみ、AI Studio で課金を有効化し有料ティアにする（無料の利点は薄れる）。将来、学習利用を完全に避けたくなったら Cloudflare Workers AI へ差し替え可能（抽出クライアントは抽象化済み）。
 4. リポジトリルートの `.dev.vars.example` を `.dev.vars` にコピーし、自分のエディタで記入:
    ```
    GEMINI_API_KEY=...
@@ -88,7 +88,7 @@ Queues と Browser Rendering の利用に Paid が必要。
 
 ### 3.2 ST リソース作成（Claude Code 代行可）
 
-wrangler ログイン済みのため、**Claude Code に依頼すれば実行できる**（あなたはコマンド実行の許可を出すだけ）。作成するリソース名は `14_environments-deploy.md` §3.1 の命名規約どおり:
+wrangler ログイン済みのため、**Claude Code に依頼すれば実行できる**（あなたはコマンド実行の許可を出すだけ）。作成するリソース名は `spec/11_environments-deploy.md` §3.1 の命名規約どおり:
 
 ```
 wrangler d1 create cinema_hashigo_st
@@ -174,7 +174,7 @@ api パッケージ側に必要なシークレットが生じた場合は Claude
 
 ### 4.4 P1-6 の ST 検証（実 Queues 再配信 / 実 Cron 発火）
 
-P1-6（Cron + Queues 配線）の実装は P1 で完了しているが、**ローカルのエミュレーションでは再現しない2点**（Queues のネイティブ再配信・Cron の実発火）を ST で観測して初めて Done になる（`09_roadmap.md` P1-6 / P4-0 の残項目）。判定ロジック自体は `packages/ingest/src/__tests__/index.spec.ts` で固定済みなので、ここで見るのは「実インフラが設定どおりに振る舞うか」だけ。
+P1-6（Cron + Queues 配線）の実装は P1 で完了しているが、**ローカルのエミュレーションでは再現しない2点**（Queues のネイティブ再配信・Cron の実発火）を ST で観測して初めて Done になる（`plan/01_roadmap.md` P1-6 / P4-0 の残項目）。判定ロジック自体は `packages/ingest/src/__tests__/index.spec.ts` で固定済みなので、ここで見るのは「実インフラが設定どおりに振る舞うか」だけ。
 
 **前提**: 5館 active（§4.3 / P4-8）完了後。
 
@@ -284,7 +284,7 @@ crons = ["30 6 28 7 *"]
 ### 5.2 prod リソース・トークン・Secrets
 
 1. §3.2 と同様に prod リソースを作成（Claude Code 代行可）: `cinema_hashigo_prod` / `cinema-kv-prod` / `cinema-snapshots-prod` / `cinema-ingest-queue-prod`。
-   - `cinema-snapshots-prod` には R2 ライフサイクルルールを適用する（Claude Code 代行可。docs/03 §4 のスナップショット90日。ST には P5-5 で適用済み）:
+   - `cinema-snapshots-prod` には R2 ライフサイクルルールを適用する（Claude Code 代行可。docs/spec/03 §4 のスナップショット90日。ST には P5-5 で適用済み）:
      `wrangler r2 bucket lifecycle add cinema-snapshots-prod --name "expire-snapshots-90d" --prefix "raw/" --expire-days 90 --force`
 2. §3.3 と同様に **prod 用 API トークン** `cineplan-prod-deploy` を別発行。
 3. GitHub Environment `prod` の Secrets に `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` を登録（§3.4）。Required reviewers 設定済みであることを再確認。

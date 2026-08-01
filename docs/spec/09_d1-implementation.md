@@ -9,7 +9,7 @@
 - ツール: `wrangler d1 migrations`。ファイルは `migrations/NNNN_description.sql`（連番）。
 - 各マイグレーションは前方のみ（ロールバックは新規マイグレーションで対応）。
 - ローカル: `pnpm -F @cinema/api exec wrangler d1 migrations apply cinema_hashigo --local --persist-to ../../.wrangler-state`
-- 本番: Actions 経由（`--env st|prod --remote`。docs/14 §5）。手動時も同形式。
+- 本番: Actions 経由（`--env st|prod --remote`。docs/spec/11 §5）。手動時も同形式。
 - `migrations_dir` は `packages/api/wrangler.toml` の各 D1 バインディングで `../../migrations`（リポジトリルート）を指す。migrations の apply は api パッケージから実行する。
 - **seed（開発ダミーデータ）はマイグレーションに含めない。** `seeds/dev_seed.sql` として分離し、ローカルのみ `wrangler d1 execute ... --file` で投入する（下記）。migrations/ に seed を置くと deploy 時に ST/prod へ誤って適用されるため。
 - D1 は SQLite。外部キーは `PRAGMA foreign_keys=ON` が必要だが、D1 は接続ごとに OFF がデフォルト。**アプリ側で整合性を担保し、FK 制約は宣言のみ（ドキュメント目的）とする**。実削除は洗い替え（DELETE→INSERT）で行うため FK カスケードに依存しない。
@@ -162,7 +162,7 @@ pnpm -F @cinema/api exec wrangler d1 execute cinema_hashigo --local \
   --persist-to ../../.wrangler-state --file ../../seeds/dev_seed.sql
 ```
 
-P1 の取込対象 1館目（シネ・ヌーヴォ）を `paused`・`extract_method=vision` で投入する。受入プロセス（docs/16 §2.2）を経て人間が active 昇格するまで公開 API には出さない。
+P1 の取込対象 1館目（シネ・ヌーヴォ）を `paused`・`extract_method=vision` で投入する。受入プロセス（docs/guides/01 §2.2）を経て人間が active 昇格するまで公開 API には出さない。
 
 ```sql
 INSERT INTO theaters (id,name,short_name,status,lat,lng,nearest_station,

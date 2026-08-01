@@ -9,7 +9,7 @@ import {
   summarizePlan,
 } from '../plan-summary'
 
-// 共有ページ・OGP の集計導出（P5-2・docs/07 §1.5）
+// 共有ページ・OGP の集計導出（P5-2・docs/spec/07 §1.5）
 
 function plan(): Plan {
   return {
@@ -91,7 +91,7 @@ describe('summarizePlan', () => {
 })
 
 describe('shareTitle / shareDescription', () => {
-  it('OGP テキストを組み立てる（映画タイトルはテキスト側。docs/07 §1.5）', () => {
+  it('OGP テキストを組み立てる（映画タイトルはテキスト側。docs/spec/07 §1.5）', () => {
     const s = summarizePlan(plan())
     expect(shareTitle(s)).toBe('7/27(月) 2本はしごプラン — cineplan')
     expect(shareDescription(s)).toBe('移動30分・待ち15分・18:45終了 | 霧のごとく / トロフィー')

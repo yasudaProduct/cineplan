@@ -1,6 +1,6 @@
 import type { PlanSummary } from './plan-summary'
 
-// OGP 動的画像の SVG テンプレート（P5-2・docs/07 §1.5）。
+// OGP 動的画像の SVG テンプレート（P5-2・docs/spec/07 §1.5）。
 // 1200x630（OGP 標準）。使用グリフを増やしたら scripts/make-og-font.mjs の GLYPHS に
 // 追記して og-font.ttf を再生成すること（無いグリフは描画されず空白になる）。
 // PNG 化（resvg-wasm）は routes 側で行う（wasm 初期化を resource route に閉じ込める）。

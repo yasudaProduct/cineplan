@@ -8,7 +8,7 @@ import {
 } from '../extract'
 
 // review指摘#2の回帰テスト: LLM APIエラーは最大2回・JSONパース不能/zod NGは
-// 合算で最大1回、fetch 済み画像を使い回してリトライする（再取得はしない）。docs/06 §7。
+// 合算で最大1回、fetch 済み画像を使い回してリトライする（再取得はしない）。docs/spec/06 §7。
 
 const okResponse = (json: unknown) => ({
   raw: JSON.stringify(json),

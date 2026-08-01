@@ -1,4 +1,4 @@
-// ダッシュボード集計（P4-2。docs/07 §2.2）。読取専用。
+// ダッシュボード集計（P4-2。docs/spec/07 §2.2）。読取専用。
 
 export interface DashboardData {
   activeTheaterCount: number
@@ -6,7 +6,7 @@ export interface DashboardData {
   freshness: { ready: number; total: number } // active 劇場のうち明日分 screenings がある数（N-02）
   pendingReviews: number
   tokenDaily: { day: string; tokens: number }[] // JST 日次・直近7日（in+out 合算）
-  todayInTokens: number // JST 本日の in-tokens 合計（コスト急増アラートの閾値対比。P5-6・docs/06 §8）
+  todayInTokens: number // JST 本日の in-tokens 合計（コスト急増アラートの閾値対比。P5-6・docs/spec/06 §8）
   termsWarning: { id: string; name: string; terms_checked_at: string | null }[] // 90日超 or 未確認（F-24）
 }
 
@@ -83,7 +83,7 @@ export async function loadDashboard(
     .bind(jstDayStartIso(today))
     .first<{ t: number | null }>()
 
-  // terms_checked_at が 90日超 or 未確認（docs/08 §2）。retired は対象外。
+  // terms_checked_at が 90日超 or 未確認（docs/spec/08 §2）。retired は対象外。
   const cutoffIso = new Date(now.getTime() - 90 * 86_400_000).toISOString()
   const { results: termsRows } = await db
     .prepare(

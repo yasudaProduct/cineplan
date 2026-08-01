@@ -2,7 +2,7 @@ import type { TheaterRecord } from '@cinema/shared'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // review指摘#2の回帰テスト: fetch_failed は最終試行(attempt>=3)のときのみ Slack 通知する
-// （毎回通知すると Queues の再配信のたびにスパムになるため）。docs/06 §7。
+// （毎回通知すると Queues の再配信のたびにスパムになるため）。docs/spec/06 §7。
 
 const compliantTheater: TheaterRecord = {
   id: 'thr_test',

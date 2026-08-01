@@ -7,7 +7,7 @@ import {
   type LlmResult,
 } from './types'
 
-// ExtractionResult 対応の Gemini responseSchema（docs/06 §3）。
+// ExtractionResult 対応の Gemini responseSchema（docs/spec/06 §3）。
 // regex（date/startTime 等）は Gemini schema では表現できないため zod 側（validate）で検証する。
 const RESPONSE_SCHEMA = {
   type: 'OBJECT',
@@ -34,7 +34,7 @@ const RESPONSE_SCHEMA = {
   required: ['businessDate', 'screenings'],
 }
 
-// ExtractedDateList 対応（text 日分割の日付発見コール。docs/06 §4 text_v2・ADR-0017）。
+// ExtractedDateList 対応（text 日分割の日付発見コール。docs/spec/06 §4 text_v2・ADR-0017）。
 const DATE_LIST_RESPONSE_SCHEMA = {
   type: 'OBJECT',
   properties: {
@@ -74,7 +74,7 @@ export function createGeminiClient(opts: { apiKey: string; model: string }): Llm
         },
       }
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${opts.model}:generateContent`
-      // タイムアウトでハングを LLM API エラーに変換（リトライ予算へ乗せる。docs/06 §7）。
+      // タイムアウトでハングを LLM API エラーに変換（リトライ予算へ乗せる。docs/spec/06 §7）。
       // 120秒: rendered 劇場（サイト全体を取得するため htmlToText 後も数万トークン規模になりうる）
       // では60秒では常時タイムアウトすることを実測で確認（テアトル梅田・約4.5万トークン入力で
       // 3回とも60秒ちょうどで打ち切られていた）。

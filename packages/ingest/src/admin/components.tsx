@@ -1,6 +1,6 @@
 import type { Child } from 'hono/jsx'
 
-// 管理サイト共通コンポーネント（Hono JSX・SSR のみ・クライアント JS なし。docs/07 §3）。
+// 管理サイト共通コンポーネント（Hono JSX・SSR のみ・クライアント JS なし。docs/spec/07 §3）。
 
 const CSS = `
 :root { color-scheme: light; }

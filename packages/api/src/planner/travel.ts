@@ -1,7 +1,7 @@
 import type { Location, TravelMatrix } from '@cinema/shared'
 import type { TravelResolver } from './types'
 
-// 移動時間の解決（docs/05 §5）。
+// 移動時間の解決（docs/spec/05 §5）。
 // 劇場間: KV の TravelMatrix（shared 契約・ingest 週次バッチが生成。ADR-0014）があれば参照、
 // 欠損ペアは直線距離フォールバック推定。
 // origin/destination: station は劇場の nearest_station 一致（walk_min_from_sta）、
@@ -27,7 +27,7 @@ export function haversineKm(aLat: number, aLng: number, bLat: number, bLng: numb
   return 2 * 6371 * Math.asin(Math.sqrt(h))
 }
 
-// 直線距離 ÷ 20km/h + 15分（docs/05 §5 のフォールバック推定）
+// 直線距離 ÷ 20km/h + 15分（docs/spec/05 §5 のフォールバック推定）
 export function estimateMinutes(aLat: number, aLng: number, bLat: number, bLng: number): number {
   return (
     Math.ceil((haversineKm(aLat, aLng, bLat, bLng) / FALLBACK_SPEED_KMH) * 60) +
@@ -43,11 +43,11 @@ export function createTravelResolver(
   const geo = new Map(theaters.map((t) => [t.id, t]))
   return {
     between(a: string, b: string): number {
-      if (a === b) return 0 // 同一劇場（マージンは館内 M_IN 固定。docs/05 §5）
+      if (a === b) return 0 // 同一劇場（マージンは館内 M_IN 固定。docs/spec/05 §5）
       const ia = idx.get(a)
       const ib = idx.get(b)
       if (matrix && ia !== undefined && ib !== undefined) {
-        // 行・セル欠損や null は行列値として扱わずフォールバックへ（docs/05 §5 の欠損ペア）
+        // 行・セル欠損や null は行列値として扱わずフォールバックへ（docs/spec/05 §5 の欠損ペア）
         const v = matrix.matrix[ia]?.[ib]
         if (typeof v === 'number' && Number.isFinite(v)) return v
       }

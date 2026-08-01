@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { sharePlan } from '../lib/api'
 import { shareDescription, shareTitle, summarizePlan } from '../lib/plan-summary'
 
-// 共有ボタン + 共有手段（P5-2・F-12・docs/07 §1.5）。
+// 共有ボタン + 共有手段（P5-2・F-12・docs/spec/07 §1.5）。
 // POST /v1/plans で URL を発行し、コピー / Web Share API（対応端末）/ X / LINE を出す。
 // - 発行直後に共有ページへ自動遷移しない（書込直後の読取はエッジ伝播の過渡で 404 に
 //   なりうることを ST で観測済み。共有の目的は URL の配布であり遷移は必須でない）。

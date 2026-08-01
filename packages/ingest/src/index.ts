@@ -18,19 +18,19 @@ export type IngestQueueMessage =
   | { theaterId: string; trigger: IngestTrigger }
   | { reextractRunId: string }
 
-// TravelMatrix 週次再生成の cron パターン（wrangler.toml [env.prod.triggers] と一致させる。docs/14 §3.2）
+// TravelMatrix 週次再生成の cron パターン（wrangler.toml [env.prod.triggers] と一致させる。docs/spec/11 §3.2）
 const MATRIX_CRON = '0 18 * * 1'
 
-// データ保持の日次削除（P5-5・docs/11 §7）。17:00 UTC = 02:00 JST（取込 21:00 UTC と離す）
+// データ保持の日次削除（P5-5・docs/spec/09 §7）。17:00 UTC = 02:00 JST（取込 21:00 UTC と離す）
 const RETENTION_CRON = '0 17 * * *'
 
-// fetch_failed の指数バックオフ（初回5分後・以降倍々。docs/06 §7）。
+// fetch_failed の指数バックオフ（初回5分後・以降倍々。docs/spec/06 §7）。
 const RETRY_BASE_DELAY_SECONDS = 300
 
 export type { Env }
 
-// 取込サービス + 管理サイト（/admin。P4-2〜P4-5・docs/07 §2）。
-// 取得マナー（docs/08 §3）は fetch 実装と手動取込の1日1回ガードで厳守。
+// 取込サービス + 管理サイト（/admin。P4-2〜P4-5・docs/spec/07 §2）。
+// 取得マナー（docs/spec/08 §3）は fetch 実装と手動取込の1日1回ガードで厳守。
 const app = new Hono<{ Bindings: Env }>()
 
 app.onError((err, c) => {
@@ -50,10 +50,10 @@ app.get('/', (c) => c.text('cinema-ingest'))
 export default {
   fetch: app.fetch,
 
-  // Cron（prod のみ有効・docs/14 §3.2）。controller.cron で分岐:
+  // Cron（prod のみ有効・docs/spec/11 §3.2）。controller.cron で分岐:
   // - 毎日 21:00 UTC: active 劇場を Queue 投入（P1-6）
   // - 月曜 18:00 UTC: TravelMatrix 週次再生成（P4-6・ADR-0014）
-  // - 毎日 17:00 UTC: データ保持の期限削除（P5-5・docs/11 §7）
+  // - 毎日 17:00 UTC: データ保持の期限削除（P5-5・docs/spec/09 §7）
   async scheduled(controller, env): Promise<void> {
     if (controller.cron === MATRIX_CRON) {
       const r = await buildTravelMatrix(env)
@@ -80,7 +80,7 @@ export default {
   // （fix/p4-manual-ingest-orphan・fix/reextract-orphan）: ブラウザ接続に処理を同期させると、
   // rendered+LLM抽出の途中で接続が切れた際に Workers が実行をキャンセルし run が孤児化する
   // 不具合があったため（再抽出は「先方アクセスが無く短時間」という前提だったが、大きな
-  // rendered ページでは抽出自体が数分かかり同じ問題が起きることが実機で判明。docs/06 §7）。
+  // rendered ページでは抽出自体が数分かかり同じ問題が起きることが実機で判明。docs/spec/06 §7）。
   // fetch_failed のみ Queues リトライ対象（再抽出は fetch を伴わないため対象外）。
   // それ以外の失敗（extraction_failed / validation_failed / 恒久的エラー）は ack して打ち切る
   // （再取得を伴う再試行をしないため）。

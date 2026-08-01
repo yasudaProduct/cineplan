@@ -2,9 +2,9 @@ import { LegalPage, LegalSection } from '../components/LegalPage'
 import { CONTACT_EMAIL, SERVICE_NAME } from '../lib/site'
 import type { Route } from './+types/privacy'
 
-// プライバシーポリシー（P5-4・07 §1.6・docs/08 §4）。
-// ドラフト: 文面の最終確認はオーナー作業（docs/16 §5.4）。
-// 「個人情報を保持しない」の記載は実装と一致させること（16 §5.4 の確認観点）:
+// プライバシーポリシー（P5-4・07 §1.6・docs/spec/08 §4）。
+// ドラフト: 文面の最終確認はオーナー作業（docs/guides/01 §5.4）。
+// 「個人情報を保持しない」の記載は実装と一致させること（guides/01 §5.4 の確認観点）:
 // - 会員登録なし / D1 に利用者情報なし（shared_plans はプラン内容のみ）
 // - フォーム入力は localStorage（端末内）のみ
 // - 現在地は座標を /v1/plan のリクエストに使うのみで保存しない

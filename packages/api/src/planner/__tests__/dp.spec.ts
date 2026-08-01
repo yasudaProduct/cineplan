@@ -4,15 +4,15 @@ import { runDp } from '../dp'
 import { selectPlans } from '../kbest'
 import type { Candidate, Entry, PlanContext } from '../types'
 
-// docs/12 §7 の検算済み期待値テスト。数値は手計算で確定済み・変更しない。
-// 実装が合わない場合は実装を直す（docs/09 進行ルール2）。
+// docs/spec/10 §7 の検算済み期待値テスト。数値は手計算で確定済み・変更しない。
+// 実装が合わない場合は実装を直す（docs/plan/01 進行ルール2）。
 
 const min = (s: string): number => {
   const [h, m] = s.split(':').map(Number)
   return h * 60 + m
 }
 
-// セットアップ（docs/12 §7）:
+// セットアップ（docs/spec/10 §7）:
 // 劇場 A, B。travel(A,B)=travel(B,A)=20分、同一劇場=0分。m_in=10、arrivalMargin=15。
 // origin→A=10分、origin→B=30分。destination なし。window 10:00〜19:00。
 const cand = (
@@ -61,7 +61,7 @@ function makeContext(over: Partial<PlanContext> = {}): PlanContext {
 
 const ids = (e: Entry): string[] => e.path.map((i) => CANDS[i].screeningId)
 
-describe('planner DP — docs/12 §7 の検算済み期待値', () => {
+describe('planner DP — docs/spec/10 §7 の検算済み期待値', () => {
   it('most_movies は s1>s3>s5、本数3・移動30・待ち45・終了18:00', () => {
     const sols = runDp(makeContext())
     const best = selectPlans(sols, { maxResults: 3, cands: CANDS, mustMovieIds: [] })[0]
@@ -105,7 +105,7 @@ describe('planner DP — docs/12 §7 の検算済み期待値', () => {
   })
 })
 
-describe('k-best ラベリング — docs/12 §7 代替案（maxResults=3）', () => {
+describe('k-best ラベリング — docs/spec/10 §7 代替案（maxResults=3）', () => {
   it('most_movies / less_travel=s1>s2(移動10) / relaxed=s1>s3(終了15:30) が選ばれ重複しない', () => {
     const sols = runDp(makeContext())
     const picked = selectPlans(sols, { maxResults: 3, cands: CANDS, mustMovieIds: [] })
@@ -141,7 +141,7 @@ describe('k-best ラベリング — docs/12 §7 代替案（maxResults=3）', (
   })
 
   it('同一構成（theater 列 + movie 集合が一致）で上映回だけ異なる Plan は重複として1つに絞る', () => {
-    // 作品X が同一劇場で2回上映 → 単発 Plan [x1] と [x2] は同一構成（docs/05 §6）
+    // 作品X が同一劇場で2回上映 → 単発 Plan [x1] と [x2] は同一構成（docs/spec/05 §6）
     const dup: Candidate[] = [
       cand('x1', 'A', 'X', '10:30', '12:30'),
       cand('x2', 'A', 'X', '14:00', '16:00'),
@@ -156,7 +156,7 @@ describe('k-best ラベリング — docs/12 §7 代替案（maxResults=3）', (
   })
 })
 
-describe('DP の mask 別ビーム保持（docs/05 §3 dp[i][mask] の回帰テスト）', () => {
+describe('DP の mask 別ビーム保持（docs/spec/05 §3 dp[i][mask] の回帰テスト）', () => {
   it('must 達成経路が多数の非 must 経路に押し出されず生き残る', () => {
     // 劇場A に 10:00-11:00 のフィラー10作品（origin→A=0・移動0で高スコア）、
     // 劇場B に must 作品 MM（origin→B=30・B→A=20 で低スコア）。

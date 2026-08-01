@@ -1,6 +1,6 @@
 import type { MiddlewareHandler } from 'hono'
 
-// IP ベースの簡易レート制限（docs/04: 60 req/min）。
+// IP ベースの簡易レート制限（docs/spec/04: 60 req/min）。
 // isolate 内メモリのため厳密ではない（isolate 再作成・複数 isolate で緩む）。
 // MVP の乱用抑止としては十分。厳密化が必要になったら Durable Objects / KV で置換。
 const buckets = new Map<string, { count: number; windowStart: number }>()

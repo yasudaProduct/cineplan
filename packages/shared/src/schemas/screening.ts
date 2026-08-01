@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-// 中核エンティティ Screening（docs/03 §3.3）。公開 API では露出しない（原則1）。
+// 中核エンティティ Screening（docs/spec/03 §3.3）。公開 API では露出しない（原則1）。
 // 内部（取込書込・planner ロード）の型の単一の真実。
 export const Screening = z.object({
   id: z.string(),
@@ -16,7 +16,7 @@ export const Screening = z.object({
 })
 export type Screening = z.infer<typeof Screening>
 
-// planner 用の候補（docs/11 §5.1 の JOIN 結果）。build 層で ScreeningLeg に変換する。
+// planner 用の候補（docs/spec/09 §5.1 の JOIN 結果）。build 層で ScreeningLeg に変換する。
 export const CandidateScreening = z.object({
   screeningId: z.string(),
   theaterId: z.string(),

@@ -1,7 +1,7 @@
 import type { Plan, ScreeningLeg } from '@cinema/shared'
 import { jstTime } from './time'
 
-// 共有ページ・OGP 用の集計導出（P5-2・docs/07 §1.5）。
+// 共有ページ・OGP 用の集計導出（P5-2・docs/spec/07 §1.5）。
 // Plan スナップショットから導出できる値のみ（駅名・検索条件は Plan に含まれない）。
 
 export interface PlanSummary {
@@ -43,7 +43,7 @@ export function summarizePlan(plan: Plan): PlanSummary {
   }
 }
 
-// og:description / Web Share のテキスト（映画タイトルは画像でなくテキスト側に載せる。docs/07 §1.5）
+// og:description / Web Share のテキスト（映画タイトルは画像でなくテキスト側に載せる。docs/spec/07 §1.5）
 export function shareDescription(s: PlanSummary): string {
   const stats = `移動${s.travelMin}分・待ち${s.waitMin}分・${s.endTime}終了`
   return s.movieTitles.length > 0 ? `${stats} | ${s.movieTitles.join(' / ')}` : stats

@@ -1,6 +1,6 @@
-// P1-1 Fetch。取得マナー（docs/08 §3）: 正直UA・同一ホスト5秒間隔・30sタイムアウト・偽装しない。
+// P1-1 Fetch。取得マナー（docs/spec/08 §3）: 正直UA・同一ホスト5秒間隔・30sタイムアウト・偽装しない。
 // vision 劇場は schedule ページ HTML から画像URLを抽出し、画像も取得する。
-// 複数日取得（tabs / url_template。ADR-0019・docs/06 §2.2）も同じマナーで直列に行う。
+// 複数日取得（tabs / url_template。ADR-0019・docs/spec/06 §2.2）も同じマナーで直列に行う。
 
 import type { FetchDayMode } from '@cinema/shared'
 import { logInfo } from '../log'
@@ -13,7 +13,7 @@ import {
   selectFetchDates,
 } from './date-tabs'
 
-// UA は正直に名乗る（docs/08 §3）。<domain> はドメイン確定（P5）まで暫定。
+// UA は正直に名乗る（docs/spec/08 §3）。<domain> はドメイン確定（P5）まで暫定。
 export const USER_AGENT = 'CinemaHashigoBot/0.1 (+https://example.com/bot)'
 const TIMEOUT_MS = 30_000
 const HOST_INTERVAL_MS = 5_000
@@ -86,7 +86,7 @@ export async function fetchSchedule(theater: FetchTarget): Promise<FetchedSchedu
   if (theater.extractMethod === 'vision') {
     const urls = extractScheduleImageUrls(scheduleHtml, theater.scheduleUrl)
     for (const url of urls) {
-      await sleep(HOST_INTERVAL_MS) // 同一ホスト5秒間隔（docs/08 §3）
+      await sleep(HOST_INTERVAL_MS) // 同一ホスト5秒間隔（docs/spec/08 §3）
       const res = await fetchWithUA(url)
       images.push({
         url,
@@ -105,9 +105,9 @@ export interface RenderedFetchOptions {
   businessDate?: string // JST 当日。取得対象日の下限（過去日を取らない）
 }
 
-// rendered 取得（P4-7・docs/06 §2.0）。Browser Rendering で JS 描画後の DOM を取得する。
+// rendered 取得（P4-7・docs/spec/06 §2.0）。Browser Rendering で JS 描画後の DOM を取得する。
 // 既定（dayMode='single'）は 1回の取込 = 1回のページロード。dayMode='tabs' は同一ページ上で
-// 日付タブを5秒間隔・直列にクリックし、日付ごとの DOM を集める（ADR-0019・docs/06 §2.2）。
+// 日付タブを5秒間隔・直列にクリックし、日付ごとの DOM を集める（ADR-0019・docs/spec/06 §2.2）。
 // 取得マナーは static と同じ。画像は取得しない（text 抽出前提）。
 // puppeteer は動的 import（vitest の Node 環境で workers 専用依存を読み込まないため）。
 export async function fetchRenderedSchedule(
@@ -120,7 +120,7 @@ export async function fetchRenderedSchedule(
   const instance = await puppeteer.launch(browser)
   try {
     const page = await instance.newPage()
-    await page.setUserAgent(USER_AGENT) // 正直 UA（docs/08 §3）
+    await page.setUserAgent(USER_AGENT) // 正直 UA（docs/spec/08 §3）
     const res = await page.goto(scheduleUrl, { waitUntil: 'networkidle0', timeout: TIMEOUT_MS })
     if (res && !res.ok() && res.status() !== 304) {
       throw new Error(`HTTP ${res.status()} for ${scheduleUrl}`)
@@ -143,7 +143,7 @@ export async function fetchRenderedSchedule(
     // 本文変化とは独立に判定する。**内容が前日と同一の日を取りこぼさないための要**:
     // シネコンの平日（月火水など）は編成が完全に同一になることがあり、本文テキストの
     // 変化だけを見ると「AJAX 未着」と区別できない（実測: T・ジョイ梅田で 7/28・7/29 を
-    // 誤って捨てた。ADR-0019・docs/06 §2.2）。第三者（広告・計測）は host 一致で除外する。
+    // 誤って捨てた。ADR-0019・docs/spec/06 §2.2）。第三者（広告・計測）は host 一致で除外する。
     const pageHost = new URL(scheduleUrl).host
     let sameOriginXhr = 0
     page.on('response', (res) => {
@@ -160,7 +160,7 @@ export async function fetchRenderedSchedule(
     const days: FetchedDay[] = []
     const dayNotes: string[] = []
     for (const [i, date] of dates.entries()) {
-      await sleep(HOST_INTERVAL_MS) // 同一ホスト5秒間隔（docs/08 §0・§3。タブ操作も対象）
+      await sleep(HOST_INTERVAL_MS) // 同一ホスト5秒間隔（docs/spec/08 §0・§3。タブ操作も対象）
       const before = await page.evaluate(readContentSignatureInPage)
       const xhrBefore = sameOriginXhr
       const clicked = await page.evaluate(clickDateTabInPage, date)
@@ -230,7 +230,7 @@ export async function fetchScheduleByDateTemplate(
   const days: FetchedDay[] = []
   const dayNotes: string[] = []
   for (const [i, date] of dates.entries()) {
-    if (i > 0) await sleep(HOST_INTERVAL_MS) // 同一ホスト5秒間隔（docs/08 §0・§3）
+    if (i > 0) await sleep(HOST_INTERVAL_MS) // 同一ホスト5秒間隔（docs/spec/08 §0・§3）
     const url = resolveDateUrl(target.scheduleUrl, date)
     try {
       const res = await fetchWithUA(url)

@@ -1,4 +1,4 @@
-// 構造化ログ（Workers Logs。feat/ingest-observability・docs/14 §3.2・docs/16 §6）。
+// 構造化ログ（Workers Logs。feat/ingest-observability・docs/spec/11 §3.2・docs/guides/01 §6）。
 // console.log/error にオブジェクトを渡すと Workers Logs がフィールド単位でインデックスし、
 // ダッシュボードで event / runId / theaterId 等により検索できる。イベント台帳は README.md。
 //

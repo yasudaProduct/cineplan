@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { runRetention } from '../retention'
 
-// データ保持削除（P5-5・docs/11 §7）。
+// データ保持削除（P5-5・docs/spec/09 §7）。
 // SQL の要点（datetime() ラップ・FK ガード・pending 除外・batch=1トランザクション）を固定する。
 // 実データでの境界（30/90/180日・期限切れ）はローカル D1 E2E で確認する。
 
@@ -41,7 +41,7 @@ describe('runRetention', () => {
     expect(d).toContain('FROM shared_plans')
   })
 
-  it('ISO/スペース形式の比較非互換を避けるため、日時列は datetime() でラップする（docs/11 §7）', async () => {
+  it('ISO/スペース形式の比較非互換を避けるため、日時列は datetime() でラップする（docs/spec/09 §7）', async () => {
     const { db, batchedRef } = createFakeDb()
     await runRetention(db)
     const [scr, rev, runs, plans] = batchedRef()

@@ -2,8 +2,8 @@ import type { TheaterRecord } from '@cinema/shared'
 import type { ScreeningDateCount, ScreeningListRow } from '../../db/screenings'
 import { jst } from '../components'
 
-// 上映データ（抽出検証・ADR-0015。docs/07 §2.6）。取込済み screenings を公式サイトと
-// 目視突合するための内部表示。利用者向け機能ではない（docs/08 §1 原則1 注記）。
+// 上映データ（抽出検証・ADR-0015。docs/spec/07 §2.6）。取込済み screenings を公式サイトと
+// 目視突合するための内部表示。利用者向け機能ではない（docs/spec/08 §1 原則1 注記）。
 // SSR 画面のみ・エクスポート/共有機能を付けない。
 
 export function ScreeningsPage(props: {

@@ -4,7 +4,7 @@ import type { Env } from '../env'
 import { ApiHttpError } from '../errors'
 import { plan } from '../planner'
 
-// POST /v1/plan（docs/04）。入力不正=400、未取込=422、案なしも 200 で infeasible。
+// POST /v1/plan（docs/spec/04）。入力不正=400、未取込=422、案なしも 200 で infeasible。
 export const planRoute = new Hono<{ Bindings: Env }>().post('/', async (c) => {
   let body: unknown
   try {

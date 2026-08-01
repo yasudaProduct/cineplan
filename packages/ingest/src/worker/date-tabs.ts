@@ -1,4 +1,4 @@
-// 日付タブの汎用検出と取得日付の選定（複数日取得・ADR-0019・docs/06 §2.2）。
+// 日付タブの汎用検出と取得日付の選定（複数日取得・ADR-0019・docs/spec/06 §2.2）。
 //
 // ■ ページ内関数（*InPage）の絶対ルール
 // これらは `page.evaluate()` に渡され Function.prototype.toString() でブラウザへ送られる。
@@ -78,7 +78,7 @@ export function clickDateTabInPage(date: string): boolean {
 
 // ページ内で本文テキストの変化シグネチャ（長さ + FNV-1a 32bit）を返す。
 // page.content() のハッシュを使わないのは、タブの active クラス付替えだけで変化してしまい
-// AJAX 到着前の DOM を「変化した」と誤検出するため（docs/06 §2.2）。
+// AJAX 到着前の DOM を「変化した」と誤検出するため（docs/spec/06 §2.2）。
 export function readContentSignatureInPage(): string {
   try {
     const body = document.body

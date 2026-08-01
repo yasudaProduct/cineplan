@@ -1,6 +1,6 @@
 import type { CandidateScreening } from '@cinema/shared'
 
-// planner 用: 対象日・active 劇場の候補 Screening を一括ロード（docs/11 §5.1）。
+// planner 用: 対象日・active 劇場の候補 Screening を一括ロード（docs/spec/09 §5.1）。
 // この配列をメモリに載せて DP する。D1 への追加クエリは行わない。
 export async function loadCandidates(
   db: D1Database,

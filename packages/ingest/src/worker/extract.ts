@@ -93,7 +93,7 @@ export async function extractText(
   )
 }
 
-// docs/06 §7 のリトライ予算。LLM API エラー（client.extract 自体の失敗）と
+// docs/spec/06 §7 のリトライ予算。LLM API エラー（client.extract 自体の失敗）と
 // JSON パース不能/zod NG（LLM の出力が壊れていた場合）は別予算。
 // いずれも fetch 済みの入力（メモリ上）を使い回すだけで再取得はしない。
 const LLM_API_MAX_RETRIES = 2
@@ -105,7 +105,7 @@ export interface ExtractWithRetriesResult {
 }
 
 // 予算切れの最終エラーは経緯を前置して投げ直す。D1 の error_message（管理画面）だけで
-// 「何をどれだけ試して失敗したか」が読めるように（feat/ingest-observability・docs/06 §7）。
+// 「何をどれだけ試して失敗したか」が読めるように（feat/ingest-observability・docs/spec/06 §7）。
 function budgetExhausted(e: unknown, apiFailures: number, malformedFailures: number): Error {
   const detail = e instanceof Error ? e.message : String(e)
   return new Error(
@@ -113,7 +113,7 @@ function budgetExhausted(e: unknown, apiFailures: number, malformedFailures: num
   )
 }
 
-// 抽出 + スキーマ検証を、docs/06 §7 のリトライ予算内でリトライしながら行う（方式共通）。
+// 抽出 + スキーマ検証を、docs/spec/06 §7 のリトライ予算内でリトライしながら行う（方式共通）。
 // parse は zod 検証（ExtractionResult / ExtractedDateList 等スキーマ別）。
 // 予算を使い切って尚失敗した場合はその時点のエラーを throw する（呼び出し側で extraction_failed 確定）。
 async function withRetries<T>(
@@ -190,7 +190,7 @@ export async function extractTextWithRetries(
   )
 }
 
-// ---- text 日単位分割（text_v2・ADR-0017・docs/06 §1/§4/§7） ----
+// ---- text 日単位分割（text_v2・ADR-0017・docs/spec/06 §1/§4/§7） ----
 
 // 発見日付の上限（幻覚・異常ページによる呼出爆発の安全弁）
 export const MAX_DATES = 14
@@ -295,7 +295,7 @@ export async function extractTextDaySplit(
   return mergeDayResults(fallbackBusinessDate, screenings, notes, outcomes)
 }
 
-// 複数日取得（ADR-0019・docs/06 §2.2）の抽出。文書ごとに日付が既知のため
+// 複数日取得（ADR-0019・docs/spec/06 §2.2）の抽出。文書ごとに日付が既知のため
 // **日付発見コールを行わず**、文書1つにつき日別コールを1回だけ呼ぶ。
 // text_v3 の日別プロンプトに基準日として対象日そのものを渡すのがキモ:
 // 「対象日 == 基準日 のとき、日付見出しの無い先頭ブロックも対象日の分として抽出」という

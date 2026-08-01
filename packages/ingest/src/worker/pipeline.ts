@@ -28,7 +28,7 @@ export interface IngestResult {
   error?: string
 }
 
-// fetch_failed の Queues 標準リトライで通知を打ち切るまでの試行数（docs/06 §7）。
+// fetch_failed の Queues 標準リトライで通知を打ち切るまでの試行数（docs/spec/06 §7）。
 export const FETCH_FAILED_NOTIFY_AT_ATTEMPT = 3
 
 // run 全体（fetch + 抽出）の時間予算。Queue consumer の実行上限（約15分/起動）の内側に収める。
@@ -41,8 +41,8 @@ function todayJst(): string {
   return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10)
 }
 
-// 1劇場・1回分の取込（fetch→R2→抽出→検証→正規化→D1 洗い替え）。docs/06 パイプライン。
-// attempt: Queue 消費時点の配信試行回数（1始まり。docs/06 §7 の fetch_failed 通知タイミング判定に使用）。
+// 1劇場・1回分の取込（fetch→R2→抽出→検証→正規化→D1 洗い替え）。docs/spec/06 パイプライン。
+// attempt: Queue 消費時点の配信試行回数（1始まり。docs/spec/06 §7 の fetch_failed 通知タイミング判定に使用）。
 // 手動取込は Queue を経由しないため常に 1（＝失敗したら即通知）。
 export async function ingestTheater(
   env: Env,
@@ -52,7 +52,7 @@ export async function ingestTheater(
 ): Promise<IngestResult> {
   const theater = await getTheater(env.DB, theaterId)
   if (!theater) throw new TheaterNotFoundError(theaterId)
-  assertComplianceGate(theater, trigger) // 多層防御（docs/08 §0・§2）
+  assertComplianceGate(theater, trigger) // 多層防御（docs/spec/08 §0・§2）
 
   const businessDate = todayJst()
   const businessMonth = businessDate.slice(0, 7)
@@ -68,10 +68,10 @@ export async function ingestTheater(
     fetchDays: theater.fetchDays,
   })
 
-  // 1. Fetch（static=HTTP / rendered=Browser Rendering。docs/06 §2.0）。
-  //    複数日取得（tabs / url_template。ADR-0019・docs/06 §2.2）はここで日ごとの文書を集める。
+  // 1. Fetch（static=HTTP / rendered=Browser Rendering。docs/spec/06 §2.0）。
+  //    複数日取得（tabs / url_template。ADR-0019・docs/spec/06 §2.2）はここで日ごとの文書を集める。
   //    失敗時は Queue の再配信に委ねる（Worker 側で意図的な再取得はしない）。
-  //    Slack 通知は最終試行（attempt>=3）でのみ行う（毎回通知しない。docs/06 §7）。
+  //    Slack 通知は最終試行（attempt>=3）でのみ行う（毎回通知しない。docs/spec/06 §7）。
   const fetchStartedAt = Date.now()
   // tabs はブラウザが必須（zod で担保済みだが、手書き SQL 対策に実行時も single へ縮退させる）
   const dayMode =
@@ -151,10 +151,10 @@ export async function ingestTheater(
   }
 
   // 3〜4. 抽出（vision=画像1呼出 / text=日単位分割 ADR-0017 / 複数日文書 ADR-0019）+ zod 検証。
-  // LLM APIエラー/パース不能/zod NG は関数内でリトライ済み（docs/06 §7 のリトライ予算。
+  // LLM APIエラー/パース不能/zod NG は関数内でリトライ済み（docs/spec/06 §7 のリトライ予算。
   // fetch 済み入力の使い回しのみで再取得はしない）。
   // 複数日取得は fetch に時間を使うため、run 全体の予算から残り時間を抽出デッドラインにする
-  // （Queue consumer の実行上限 約15分/起動 の内側に必ず収める。docs/06 §7）。
+  // （Queue consumer の実行上限 約15分/起動 の内側に必ず収める。docs/spec/06 §7）。
   const extractStartedAt = Date.now()
   const deadlineMs = Math.max(
     MIN_EXTRACTION_DEADLINE_MS,
@@ -217,7 +217,7 @@ export async function ingestTheater(
   if (ng2) return await toReview(env, runId, theaterId, theater.name, result, ng2, prefix)
 
   // 7〜8. 通常書込パス（正規化→movie解決→洗い替え。承認/再抽出と同一関数・write.ts）。
-  //    coverageFloor=fetch 当日で stale データを防ぐ（docs/03 §7）。
+  //    coverageFloor=fetch 当日で stale データを防ぐ（docs/spec/03 §7）。
   const written = await normalizeResolveWrite(
     env.DB,
     theaterId,

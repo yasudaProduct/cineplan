@@ -1,6 +1,6 @@
 import { newId, titleKey } from '@cinema/shared'
 
-// 名寄せ（docs/11 §4.2）。title_key 一致で既存 movie に紐付け、無ければ新規。競合時は取り直す。
+// 名寄せ（docs/spec/09 §4.2）。title_key 一致で既存 movie に紐付け、無ければ新規。競合時は取り直す。
 export async function resolveMovieId(
   db: D1Database,
   title: string,

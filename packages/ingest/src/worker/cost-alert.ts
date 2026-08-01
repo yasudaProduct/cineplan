@@ -2,7 +2,7 @@ import type { Env } from '../env'
 import { logError, logInfo } from '../log'
 import { sendSlack } from './notify'
 
-// LLM コスト急増アラート（P5-6・docs/06 §8・N-07）。
+// LLM コスト急増アラート（P5-6・docs/spec/06 §8・N-07）。
 // JST 当日の in-tokens 合計が閾値（既定 500万）を超えたら Slack 警告する。
 //
 // 判定は run 完了ごとの「閾値跨ぎ」方式: 当日合計がこの run で初めて閾値以上になった
@@ -44,7 +44,7 @@ export async function checkDailyCostAlert(env: Env, runId: string): Promise<void
       logInfo('cost.alert', { runId, total, threshold })
       await sendSlack(
         env.SLACK_WEBHOOK_URL,
-        `⚠ LLMトークン急増: 本日の in-tokens 合計が ${total.toLocaleString()} に達しました（閾値 ${threshold.toLocaleString()}・docs/06 §8）。管理サイトの取込履歴を確認してください。`,
+        `⚠ LLMトークン急増: 本日の in-tokens 合計が ${total.toLocaleString()} に達しました（閾値 ${threshold.toLocaleString()}・docs/spec/06 §8）。管理サイトの取込履歴を確認してください。`,
       )
     }
   } catch (e) {

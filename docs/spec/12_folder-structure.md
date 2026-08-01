@@ -1,7 +1,7 @@
 # リポジトリフォルダ構成
 
 - Version: 0.1
-- 関連: `CLAUDE.md`（コマンド・制約）/ `09_roadmap.md`（P0-1 で実際に作る）/ `14_environments-deploy.md`（Compose / Actions）
+- 関連: `CLAUDE.md`（コマンド・制約）/ `plan/01_roadmap.md`（P0-1 で実際に作る）/ `spec/11_environments-deploy.md`（Compose / Actions）
 - **本ドキュメントが構成の正とする。** 実装時に追加が必要なファイルは追加してよいが、削除・移動・命名変更は本書を先に更新してから行う。
 - 実リポジトリのディレクトリ名は `cineplan`（GitHub: `yasudaProduct/cineplan`）。ツリー先頭の `cinema-hashigo/` は論理名であり、ルートディレクトリ名の変更は不要。
 
@@ -49,7 +49,7 @@ cinema-hashigo/                          # リポジトリルート
 │   │       │   ├── movies.ts            # GET /v1/movies?date=（上映時刻を返さない: 原則1）
 │   │       │   ├── plan.ts              # POST /v1/plan（infeasible も 200 で返す）
 │   │       │   └── plans.ts             # POST /v1/plans / GET /v1/plans/:id / GET /v1/plans/:id/ics
-│   │       ├── planner/                 # ルート算出コア（12_dp-implementation.md）
+│   │       ├── planner/                 # ルート算出コア（spec/10_dp-implementation.md）
 │   │       │   ├── types.ts             # Candidate / Score / Entry / PlanContext
 │   │       │   ├── travel.ts            # TravelResolver（KV 行列参照 + origin/dest 動的解決）
 │   │       │   ├── dp.ts                # runDp()（ビットマスク DP 本体）
@@ -57,10 +57,10 @@ cinema-hashigo/                          # リポジトリルート
 │   │       │   ├── build.ts             # Entry → API Plan（legs 配列）変換
 │   │       │   ├── index.ts             # plan() エントリ・infeasible 判定
 │   │       │   └── __tests__/
-│   │       │       ├── dp.spec.ts       # 12 §7 検算済み期待値テスト ← 最重要・値を変えない
+│   │       │       ├── dp.spec.ts       # spec/10 §7 検算済み期待値テスト ← 最重要・値を変えない
 │   │       │       ├── travel.spec.ts
 │   │       │       └── build.spec.ts
-│   │       └── db/                      # D1 読取専用アクセス層（11 §5）
+│   │       └── db/                      # D1 読取専用アクセス層（spec/09 §5）
 │   │           ├── screenings.ts        # loadCandidates()
 │   │           ├── theaters.ts          # listTheaters()
 │   │           ├── movies.ts            # listMovies()（時刻なし）
@@ -95,16 +95,16 @@ cinema-hashigo/                          # リポジトリルート
 │   │       ├── extraction/prompts/
 │   │       │   ├── text_v1.ts           # HTML 抽出プロンプト v1（バージョン固定・既存版変更禁止）
 │   │       │   └── vision_v1.ts         # 画像抽出プロンプト v1（ADR-0012）
-│   │       ├── db/                      # D1 書込アクセス層（11 §4）
+│   │       ├── db/                      # D1 書込アクセス層（spec/09 §4）
 │   │       │   ├── ingest-runs.ts       # IngestRun ライフサイクル + 一覧/詳細/直近streak（管理用読取）
 │   │       │   ├── movies.ts            # resolveMovieId()（UPSERT + 名寄せ）
 │   │       │   ├── screenings.ts        # replaceScreeningsByDate()（洗い替え・batch）
 │   │       │   ├── theaters.ts          # 劇場マスタ読取/CRUD（active のみ・全件・作成/更新）
-│   │       │   ├── reviews.ts           # レビューキュー登録・一覧・approveReview()/reject（11 §6）
+│   │       │   ├── reviews.ts           # レビューキュー登録・一覧・approveReview()/reject（spec/09 §6）
 │   │       │   └── admin-queries.ts     # ダッシュボード集計（本日状況・鮮度・トークン日次・規約期限）
 │   │       └── admin/                   # 管理サイト（Cloudflare Access 配下・07 §2）
 │   │           ├── index.tsx            # /admin ルート登録（Hono）+ 手動取込/再抽出/承認 POST
-│   │           ├── guard.ts             # コード側ガード（token or Access JWT ヘッダ。14 §4）
+│   │           ├── guard.ts             # コード側ガード（token or Access JWT ヘッダ。spec/11 §4）
 │   │           ├── pages/
 │   │           │   ├── dashboard.tsx    # ダッシュボード: 取込状況・鮮度・LLM コスト・規約期限警告
 │   │           │   ├── theaters.tsx     # 劇場マスタ CRUD + 手動取込・robots 確認
@@ -147,31 +147,34 @@ cinema-hashigo/                          # リポジトリルート
 │       └── slack-expectations.json     # Slack Webhook モックレスポンス定義
 │
 ├── migrations/                          # D1 マイグレーション（local/st/prod 共通・スキーマのみ）
-│   └── 0001_init.sql                    # 全テーブル定義・インデックス（11 §1）
+│   └── 0001_init.sql                    # 全テーブル定義・インデックス（spec/09 §1）
 │
 ├── seeds/                               # 開発 seed（マイグレーション外。ローカルのみ execute で投入）
-│   └── dev_seed.sql                     # 開発ダミー劇場（本番・ST に適用しない。11 §1）
+│   └── dev_seed.sql                     # 開発ダミー劇場（本番・ST に適用しない。spec/09 §1）
 │
-├── docs/                                # 設計ドキュメント（本ファイル群）
-│   ├── README.md                        # 索引・優先順位・不変条件
-│   ├── 01_requirements.md              ─┐
-│   ├── 02_glossary.md                   │
-│   ├── 03_data-model.md                 │
-│   ├── 04_api-spec.md                   │ 設計ドキュメント群
-│   ├── 05_routing-algorithm.md          │
-│   ├── 06_extraction-spec.md            │
-│   ├── 07_screens.md                    │
-│   ├── 08_compliance-policy.md          │ ← Claude Code への制約（最重要）
-│   ├── 09_roadmap.md                    │
-│   ├── 10_adr/                          │
-│   │   ├── README.md                    │
-│   │   └── 0001-0014.md               ─┘
-│   ├── 11_d1-implementation.md         ─┐ 実装詳細
-│   ├── 12_dp-implementation.md          │ （期待値テスト含む）
-│   ├── 13_claude-code-kickoff.md        │ Claude Code 起動プロンプト
-│   ├── 14_environments-deploy.md        │ 環境・Compose・Actions
-│   ├── 15_folder-structure.md           │ 本ドキュメント
-│   └── 16_human-setup-guide.md        ─┘ 人間（オーナー）作業手順
+├── docs/                                # ドキュメント（分類ルールは docs/README.md）
+│   ├── README.md                        # 索引・分類ルール・優先順位・不変条件
+│   ├── spec/                            # 設計マスタ（実装と食い違ったら文書を先に直す）
+│   │   ├── 01_requirements.md
+│   │   ├── 02_glossary.md
+│   │   ├── 03_data-model.md
+│   │   ├── 04_api-spec.md
+│   │   ├── 05_routing-algorithm.md
+│   │   ├── 06_extraction-spec.md
+│   │   ├── 07_screens.md
+│   │   ├── 08_compliance-policy.md      # ← Claude Code への制約（最重要）
+│   │   ├── 09_d1-implementation.md      # 実装詳細（マイグレーション・クエリ）
+│   │   ├── 10_dp-implementation.md      # 実装詳細（期待値テスト含む）
+│   │   ├── 11_environments-deploy.md    # 環境・Compose・Actions
+│   │   └── 12_folder-structure.md       # 本ドキュメント
+│   ├── plan/                            # 計画（フェーズ完了後は履歴として凍結）
+│   │   ├── 01_roadmap.md
+│   │   └── 02_claude-code-kickoff.md    # Claude Code 起動プロンプト
+│   ├── decisions/                       # 設計判断 ADR（追記専用。1 判断 = 1 ファイル）
+│   │   ├── README.md                    # ADR 索引・運用ルール
+│   │   └── 0001〜0020 の各 ADR
+│   └── guides/                          # 人間（オーナー）作業手順
+│       └── 01_human-setup-guide.md
 │
 └── .github/
     └── workflows/
@@ -196,7 +199,7 @@ cinema-hashigo/                          # リポジトリルート
 ## 設計上の注意点
 
 - `migrations/` はパッケージ内ではなくリポジトリルートに置く。全環境（local/st/prod）に同一 DDL を適用するため、どのパッケージにも属さない。
-- `compose.yaml` は D1（DB 本体）を含まない。ローカル D1 は wrangler が SQLite で管理する（14 §1・ADR-0009）。
+- `compose.yaml` は D1（DB 本体）を含まない。ローカル D1 は wrangler が SQLite で管理する（spec/11 §1・ADR-0009）。
 - `.dev.vars` は gitignore 対象。コミット禁止。GitHub Secrets にも置かず、ローカル専用。
 - `admin/` は `ingest/` パッケージ内に同居（Cloudflare Access で /admin を保護。別デプロイ不要）。
 - `web/` の共有ページ（/p/[planId]）は SSR 必須（OGP 動的生成のため）。他ページは CSR 可。

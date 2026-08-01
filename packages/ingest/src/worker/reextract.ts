@@ -48,7 +48,7 @@ const MIME: Record<string, string> = {
 }
 
 // R2 スナップショットからの再抽出（P4-4/F-21）。**先方サイトへの再取得は行わない**
-// （docs/08 §3・docs/06 §7。入力は保存済み画像のみ）。新しい run（trigger='retry'）を起票し、
+// （docs/spec/08 §3・docs/spec/06 §7。入力は保存済み画像のみ）。新しい run（trigger='retry'）を起票し、
 // 抽出→検証→通常書込パスは取込と同一の関数を通る。
 export async function reextractFromSnapshot(env: Env, sourceRunId: string): Promise<IngestResult> {
   const source = await getRun(env.DB, sourceRunId)
@@ -121,7 +121,7 @@ export async function reextractFromSnapshot(env: Env, sourceRunId: string): Prom
   }
 
   // 新しい run として記録（business_date は実行日ではなくスナップショットの取得日:
-  // 「そのデータがどの日の取得か」を保つ。docs/11 §5.4 の ready 判定とも整合）
+  // 「そのデータがどの日の取得か」を保つ。docs/spec/09 §5.4 の ready 判定とも整合）
   const runId = await createIngestRun(env.DB, {
     theaterId: theater.id,
     businessDate: snapshotDate,
@@ -140,7 +140,7 @@ export async function reextractFromSnapshot(env: Env, sourceRunId: string): Prom
     docs: extractInput.kind === 'text-days' ? extractInput.docs.length : undefined,
   })
 
-  // 抽出（リトライ込み・docs/06 §7。text は日単位分割 ADR-0017 / 複数日文書 ADR-0019）
+  // 抽出（リトライ込み・docs/spec/06 §7。text は日単位分割 ADR-0017 / 複数日文書 ADR-0019）
   // → 検証 → 通常書込パス（pipeline と同一）
   const extractStartedAt = Date.now()
   let outcome: Awaited<ReturnType<typeof extractVisionWithRetries>>

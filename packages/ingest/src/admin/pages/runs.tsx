@@ -2,7 +2,7 @@ import type { TheaterRecord } from '@cinema/shared'
 import type { RunRow } from '../../db/ingest-runs'
 import { Flash, jst, StatusChip } from '../components'
 
-// 取込履歴（docs/07 §2.4）。一覧 + 詳細 + R2 再抽出（F-21・先方再取得なし）。
+// 取込履歴（docs/spec/07 §2.4）。一覧 + 詳細 + R2 再抽出（F-21・先方再取得なし）。
 
 const STATUSES = [
   'succeeded',
@@ -162,7 +162,7 @@ export function RunDetailPage(props: {
       <p class="small">
         保存済みスナップショットを入力に、最新プロンプトで抽出をやり直す。
         <b>先方サイトへの再取得は行わない</b>
-        （docs/08 §3）。結果は新しい run（trigger=retry）として記録される。
+        （docs/spec/08 §3）。結果は新しい run（trigger=retry）として記録される。
       </p>
       <form method="post" action={`/admin/runs/${r.id}/reextract`}>
         <button type="submit" disabled={!r.snapshot_key}>

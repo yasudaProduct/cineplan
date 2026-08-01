@@ -5,14 +5,14 @@ import { fetchSharedPlan, sharedPlanIcsUrl } from '../lib/api'
 import { jstDateValue, shareDescription, shareTitle, summarizePlan } from '../lib/plan-summary'
 import type { Route } from './+types/share'
 
-// 共有ページ /p/{planId}（P5-2・F-12/F-13・docs/07 §1.5）。
+// 共有ページ /p/{planId}（P5-2・F-12/F-13・docs/spec/07 §1.5）。
 // 結果詳細の読み取り専用版。スナップショットをそのまま表示し再計算しない（F-13）。
 // OGP のため SSR 必須（ADR-0013・react-router.config.ts の ssr:true）。
 
 export async function loader({ params, request }: Route.LoaderArgs) {
   const r = await fetchSharedPlan(params.planId)
   if (!r.ok) {
-    // 期限切れ・不存在は 404（API と同じ区別をしない。docs/04 設計メモ9）。
+    // 期限切れ・不存在は 404（API と同じ区別をしない。docs/spec/04 設計メモ9）。
     // API 到達不能等は 502（ErrorBoundary で汎用エラー表示）。
     throw data({ code: r.code }, { status: r.status === 404 ? 404 : 502 })
   }

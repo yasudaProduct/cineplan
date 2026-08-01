@@ -30,8 +30,8 @@ function buildInsertStmt(
     )
 }
 
-// 同一 (theater_id, business_date) を DELETE→INSERT で置換（洗い替え・docs/11 §4.1）。
-// batch でアトミック。単一日付の書込に使う（レビュー承認は payload が1日分のためこちらを使う。docs/11 §6）。
+// 同一 (theater_id, business_date) を DELETE→INSERT で置換（洗い替え・docs/spec/09 §4.1）。
+// batch でアトミック。単一日付の書込に使う（レビュー承認は payload が1日分のためこちらを使う。docs/spec/09 §6）。
 export async function replaceScreenings(
   db: D1Database,
   theaterId: string,
@@ -98,8 +98,8 @@ export async function replaceScreeningsByDate(
   return total
 }
 
-// ---- 管理サイトの抽出検証用読取（ADR-0015。docs/07 §2.6）----
-// 利用者向け・公開 API には出さない（docs/08 §1 原則1 注記）。
+// ---- 管理サイトの抽出検証用読取（ADR-0015。docs/spec/07 §2.6）----
+// 利用者向け・公開 API には出さない（docs/spec/08 §1 原則1 注記）。
 
 export interface ScreeningDateCount {
   business_date: string
@@ -154,7 +154,7 @@ export async function listScreeningsForDate(
   return results
 }
 
-// 既定表示日: 今日(JST) → なければ直近の未来日 → なければ最新の過去日（docs/07 §2.6）
+// 既定表示日: 今日(JST) → なければ直近の未来日 → なければ最新の過去日（docs/spec/07 §2.6）
 export function pickDefaultDate(dates: string[], today: string): string | null {
   if (dates.length === 0) return null
   if (dates.includes(today)) return today

@@ -95,7 +95,7 @@ export async function failRun(
     .run()
 }
 
-// ---- 管理サイト用読取（P4-2/P4-4。docs/07 §2.2・§2.4）----
+// ---- 管理サイト用読取（P4-2/P4-4。docs/spec/07 §2.2・§2.4）----
 
 // D1 行そのまま（snake_case）。管理画面表示用。
 export interface RunRow {
@@ -148,7 +148,7 @@ export async function listRuns(db: D1Database, f: ListRunsFilter = {}): Promise<
   return results
 }
 
-// 劇場ごとの直近 run（新しい順）。active 昇格判断の連続 succeeded 表示に使う（docs/06 §9）。
+// 劇場ごとの直近 run（新しい順）。active 昇格判断の連続 succeeded 表示に使う（docs/spec/06 §9）。
 export async function recentRunsForTheater(
   db: D1Database,
   theaterId: string,
@@ -165,7 +165,7 @@ export async function recentRunsForTheater(
 }
 
 // 本日（JST）に先方サイトへアクセスした run 数（trigger=cron/manual。retry は R2 のみで数えない）。
-// 手動取込ボタンの「1日1回」ガードに使う（docs/08 §3。2回目は人間の明示チェックが必要）。
+// 手動取込ボタンの「1日1回」ガードに使う（docs/spec/08 §3。2回目は人間の明示チェックが必要）。
 export async function countTodaySiteFetches(
   db: D1Database,
   theaterId: string,
@@ -181,7 +181,7 @@ export async function countTodaySiteFetches(
   return row?.c ?? 0
 }
 
-// 孤児run の掃除（fix/p4-manual-ingest-orphan・docs/06 §7）。ブラウザ接続断などで
+// 孤児run の掃除（fix/p4-manual-ingest-orphan・docs/spec/06 §7）。ブラウザ接続断などで
 // Workers の実行がキャンセルされ、queued/fetching/extracting のまま更新が止まった run を
 // extraction_failed に確定する。/admin ダッシュボード読込時に呼ばれる（新規 Cron は追加しない）。
 // text 日分割（ADR-0017）の正常上限 = 抽出デッドライン EXTRACTION_DEADLINE_MS(10分)
