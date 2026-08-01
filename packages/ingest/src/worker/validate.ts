@@ -7,7 +7,7 @@ export interface ValidationNg {
   detail: string
 }
 
-// zod 検証（docs/06 §5）。失敗（ZodError）は呼び出し側で extraction_failed 扱い。
+// zod 検証（docs/spec/06 §5）。失敗（ZodError）は呼び出し側で extraction_failed 扱い。
 export function parseExtraction(parsed: unknown): ExtractionResultT {
   return ExtractionResult.parse(parsed)
 }
@@ -47,7 +47,7 @@ export function validateExtracted(
 }
 
 // 妥当性検証 V3/V4/V7（正規化後）。書込より前に走るため、ここで弾かれた run は
-// D1 を一切変更しない（洗い替えによるデータ損失も起きない。docs/06 §5）。
+// D1 を一切変更しない（洗い替えによるデータ損失も起きない。docs/spec/06 §5）。
 export function validateNormalized(rows: PreNormalized[]): ValidationNg | null {
   for (const r of rows) {
     // V4: endTime 指定なのに end <= start（24時超え正規化後）

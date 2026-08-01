@@ -2,7 +2,7 @@ import type { TravelMatrixMeta } from '../../cron/travel-matrix'
 import type { DashboardData } from '../../db/admin-queries'
 import { Flash, jst, sparkline } from '../components'
 
-// ダッシュボード（docs/07 §2.2）: 本日の取込状況・データ鮮度(N-02)・レビュー待ち・
+// ダッシュボード（docs/spec/07 §2.2）: 本日の取込状況・データ鮮度(N-02)・レビュー待ち・
 // LLM コスト(直近7日)・規約確認期限(F-24/90日) + TravelMatrix（P4-6）。
 export function DashboardPage({
   d,
@@ -62,7 +62,7 @@ export function DashboardPage({
           <div class="small">
             {d.tokenDaily[0]?.day} 〜 {d.tokenDaily[d.tokenDaily.length - 1]?.day}（JST日次）
           </div>
-          {/* コスト急増アラートの閾値対比（P5-6・docs/06 §8。超過時は Slack 通知済みのはず） */}
+          {/* コスト急増アラートの閾値対比（P5-6・docs/spec/06 §8。超過時は Slack 通知済みのはず） */}
           <div class={`small ${d.todayInTokens >= alertThreshold ? 'warn-text' : ''}`}>
             本日 in: {d.todayInTokens.toLocaleString()} / 警告閾値 {alertThreshold.toLocaleString()}
           </div>
@@ -90,7 +90,7 @@ export function DashboardPage({
               再生成（劇場数×(劇場数-1) 件を1秒間隔で取得）
             </button>
           </form>
-          {/* データ保持の期限削除（P5-5・docs/11 §7）。prod は日次 Cron・ST は手動 */}
+          {/* データ保持の期限削除（P5-5・docs/spec/09 §7）。prod は日次 Cron・ST は手動 */}
           <form method="post" action="/admin/retention/run" style="margin-top:8px">
             <button type="submit" class="secondary">
               🧹 データ保持削除を実行（期限切れの screenings/runs/reviews/共有プラン）
@@ -99,7 +99,7 @@ export function DashboardPage({
         </div>
       </div>
 
-      <h2>規約確認期限（90日超・未確認。docs/08 §2）</h2>
+      <h2>規約確認期限（90日超・未確認。docs/spec/08 §2）</h2>
       {d.termsWarning.length === 0 ? (
         <p class="small">警告対象はありません。</p>
       ) : (

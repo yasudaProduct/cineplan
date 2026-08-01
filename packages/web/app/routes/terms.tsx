@@ -2,8 +2,8 @@ import { LegalPage, LegalSection } from '../components/LegalPage'
 import { CONTACT_EMAIL, SERVICE_NAME } from '../lib/site'
 import type { Route } from './+types/terms'
 
-// 利用規約（P5-4・07 §1.6・docs/08 §5）。
-// ドラフト: 文面の最終確認はオーナー作業（docs/16 §5.4）。
+// 利用規約（P5-4・07 §1.6・docs/spec/08 §5）。
+// ドラフト: 文面の最終確認はオーナー作業（docs/guides/01 §5.4）。
 
 export function meta(_args: Route.MetaArgs) {
   return [{ title: `利用規約 — ${SERVICE_NAME}` }]

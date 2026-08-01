@@ -8,7 +8,7 @@ import {
 } from '@cinema/shared'
 import { z } from 'zod'
 
-// コア API クライアント（docs/04）。型は @cinema/shared の zod が単一の真実。
+// コア API クライアント（docs/spec/04）。型は @cinema/shared の zod が単一の真実。
 // API ベース URL はビルド時の VITE_API_BASE（未指定はローカル api dev の :8788）。
 const API_BASE: string =
   (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:8788'

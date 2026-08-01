@@ -1,11 +1,11 @@
 import { z } from 'zod'
 
-// 時刻は「時 0〜29・分 00〜59」に制約する（docs/06 §3・§6。24時超えは 24:00〜29:59 のみ許容）。
+// 時刻は「時 0〜29・分 00〜59」に制約する（docs/spec/06 §3・§6。24時超えは 24:00〜29:59 のみ許容）。
 // 分を \d{2} のまま（00〜99許容）にすると "10:75" 等の不正時刻が regex を素通りし、
 // 正規化（normalizeStart の setHours）が silent に別時刻へ丸めてしまうため、値域を絞る。
 const TIME_RE = /^(2[0-9]|[01]?[0-9]):[0-5]\d$/
 
-// LLM 抽出の出力スキーマ（docs/06 §3）。サイト表記のまま。正規化は後段（ingest）。
+// LLM 抽出の出力スキーマ（docs/spec/06 §3）。サイト表記のまま。正規化は後段（ingest）。
 // 任意フィールドは .nullish()（null も欠落も許容）。LLM の構造化出力は空フィールドを
 // null ではなく省略(undefined)することがあるため（Gemini 実データで判明）。
 export const ExtractedScreening = z.object({
@@ -32,7 +32,7 @@ export const ExtractionResult = z.object({
 })
 export type ExtractionResult = z.infer<typeof ExtractionResult>
 
-// text 日単位分割の日付発見コールの出力（docs/06 §1・§4 text_v2・ADR-0017）。
+// text 日単位分割の日付発見コールの出力（docs/spec/06 §1・§4 text_v2・ADR-0017）。
 export const ExtractedDateList = z.object({
   dates: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)), // ページに上映掲載がある営業日
   notes: z.string().nullish(),

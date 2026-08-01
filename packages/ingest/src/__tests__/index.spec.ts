@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Queue consumer の trigger 伝播（fix/p4-manual-ingest-orphan・fix/reextract-orphan・docs/06 §7）。
+// Queue consumer の trigger 伝播（fix/p4-manual-ingest-orphan・fix/reextract-orphan・docs/spec/06 §7）。
 // 管理サイトの手動取込は Queue に trigger='manual' を積んで投入する。cron 投入
 // （trigger 省略）が従来どおり 'cron' にフォールバックすることも回帰確認する。
 // 再抽出（reextractRunId）も同じ Queue から処理する（大きな rendered ページで抽出自体が
@@ -133,12 +133,12 @@ describe('queue() — 再抽出（fix/reextract-orphan）', () => {
   })
 })
 
-// docs/06 §7: 再取得（先方サイトへの再アクセス）を伴うリトライは fetch_failed のみ。
+// docs/spec/06 §7: 再取得（先方サイトへの再アクセス）を伴うリトライは fetch_failed のみ。
 // 指数バックオフ（初回5分後・以降倍々）は Queues 任せではなく consumer が
 // msg.retry({delaySeconds}) で明示的に計算する（wrangler.toml のコメントと対）。
 // 実キューでの再配信そのものは ST でしか確認できないが、「いつ retry を呼び、
 // いつ ack で打ち切るか」の判定はここで固定する。
-describe('queue() — fetch_failed の指数バックオフと打ち切り（docs/06 §7）', () => {
+describe('queue() — fetch_failed の指数バックオフと打ち切り（docs/spec/06 §7）', () => {
   function fetchFailedOnce() {
     ingestTheaterMock.mockResolvedValueOnce({
       runId: 'run_f',
@@ -201,10 +201,10 @@ describe('queue() — fetch_failed の指数バックオフと打ち切り（doc
 // scheduled() は controller.cron の**文字列リテラル完全一致**で分岐する（index.ts の MATRIX_CRON）。
 // wrangler.toml [env.prod.triggers] の crons と1文字でもずれると、TravelMatrix 週次が
 // 取込ディスパッチ側に落ちる（またはその逆）ため、両方の cron 式を実値で固定する。
-describe('scheduled() — cron 分岐（docs/14 §3.2）', () => {
+describe('scheduled() — cron 分岐（docs/spec/11 §3.2）', () => {
   const INGEST_CRON = '0 21 * * *' // 毎日 06:00 JST（N-02 の鮮度要件）
   const MATRIX_CRON = '0 18 * * 1' // 月曜 18:00 UTC = 火曜 03:00 JST（ADR-0014）
-  const RETENTION_CRON = '0 17 * * *' // 毎日 02:00 JST（P5-5・docs/11 §7）
+  const RETENTION_CRON = '0 17 * * *' // 毎日 02:00 JST（P5-5・docs/spec/09 §7）
 
   it('取込 cron は active 劇場を全件 trigger=cron で Queue 投入する（P1-6 の本体）', async () => {
     listActiveTheatersMock.mockResolvedValueOnce([
@@ -255,7 +255,7 @@ describe('scheduled() — cron 分岐（docs/14 §3.2）', () => {
   })
 
   it('MATRIX_CRON 以外の cron 式は取込ディスパッチに落ちる（ST 一時 cron が行列側に吸われない）', async () => {
-    // ST の実 Cron 検証では消し忘れ対策に日付固定の one-shot 式を使う（docs/14 §3.2 の
+    // ST の実 Cron 検証では消し忘れ対策に日付固定の one-shot 式を使う（docs/spec/11 §3.2 の
     // 「検証したい期間だけ一時有効化」）。この式は MATRIX_CRON と一致しないため取込側に落ちる。
     listActiveTheatersMock.mockResolvedValueOnce([{ id: 'thr_a' }])
     const { env, send } = fakeEnv()

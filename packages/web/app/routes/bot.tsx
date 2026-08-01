@@ -2,12 +2,12 @@ import { LegalPage, LegalSection } from '../components/LegalPage'
 import { BOT_USER_AGENT, CONTACT_EMAIL, SERVICE_NAME } from '../lib/site'
 import type { Route } from './+types/bot'
 
-// bot 説明ページ（P5-4・docs/08 §3「bot 説明ページ」）。
-// 目的・アクセス方針・停止依頼方法を掲載する。内容は docs/08 §3 の実装事実と一致させる:
+// bot 説明ページ（P5-4・docs/spec/08 §3「bot 説明ページ」）。
+// 目的・アクセス方針・停止依頼方法を掲載する。内容は docs/spec/08 §3 の実装事実と一致させる:
 // - 1劇場1日1セッション（1セッション最大10ページ・ページ間5秒以上・直列）
 // - 同一ホスト5秒間隔 / 30秒タイムアウト / 再処理はスナップショットから
 // - 停止依頼があれば当該劇場の取得を即時停止する運用
-// ドラフト: 文面の最終確認はオーナー作業（docs/16 §5.4）。
+// ドラフト: 文面の最終確認はオーナー作業（docs/guides/01 §5.4）。
 
 export function meta(_args: Route.MetaArgs) {
   return [{ title: `クローラについて — ${SERVICE_NAME}` }]

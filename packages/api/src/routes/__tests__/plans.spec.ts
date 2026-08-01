@@ -2,7 +2,7 @@ import type { Plan } from '@cinema/shared'
 import { describe, expect, it } from 'vitest'
 import app from '../../index'
 
-// 共有プラン API（P5-1。F-12/F-13・docs/04 /plans + 設計メモ8〜11）。
+// 共有プラン API（P5-1。F-12/F-13・docs/spec/04 /plans + 設計メモ8〜11）。
 // フェイク D1（インメモリ）で app 全体（CORS/rate-limit 込みの実配線）越しに検証する。
 
 interface StoredRow {

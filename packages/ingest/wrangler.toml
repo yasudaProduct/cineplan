@@ -4,12 +4,12 @@ compatibility_date = "2026-07-01"
 # @cloudflare/puppeteer（Browser Rendering・P4-7）が必要とする Node 互換
 compatibility_flags = ["nodejs_compat"]
 
-# rendered 劇場の描画取得（fetch_method=rendered。P4-7・docs/06 §2.0）。
-# local でも wrangler dev がローカル Chromium を起動する（docs/14 §8）。
+# rendered 劇場の描画取得（fetch_method=rendered。P4-7・docs/spec/06 §2.0）。
+# local でも wrangler dev がローカル Chromium を起動する（docs/spec/11 §8）。
 [browser]
 binding = "BROWSER"
 
-# Workers Logs（feat/ingest-observability・docs/14 §3.2・docs/16 §6）。
+# Workers Logs（feat/ingest-observability・docs/spec/11 §3.2・docs/guides/01 §6）。
 # 構造化ログ（src/log.ts。イベント台帳は README）を保存・検索可能にする。
 # サンプリング100%（既定）・保持は Workers Paid で7日。
 [observability]
@@ -33,19 +33,19 @@ bucket_name = "cinema-snapshots"
 binding = "INGEST_QUEUE"
 queue = "cinema-ingest-queue"
 
-# 取得マナー（docs/08 §3）: ホスト単位で直列。並列化で実質頻度を上げない。
+# 取得マナー（docs/spec/08 §3）: ホスト単位で直列。並列化で実質頻度を上げない。
 [[queues.consumers]]
 queue = "cinema-ingest-queue"
 max_batch_size = 1
 max_concurrency = 1
-# fetch_failed のみ Queues 標準リトライ対象（docs/06 §7）。3回失敗で consumer 側が ack して打ち切る。
+# fetch_failed のみ Queues 標準リトライ対象（docs/spec/06 §7）。3回失敗で consumer 側が ack して打ち切る。
 # 指数バックオフ（初回5分後）は msg.retry({delaySeconds}) で consumer 側が明示的に計算する（queue()）。
 max_retries = 3
 
 [vars]
 APP_ENV = "local"
 
-# Cron は本番のみ有効（docs/14 §3.2）。local/st では定義しない（先方サイトを毎日叩かない）。
+# Cron は本番のみ有効（docs/spec/11 §3.2）。local/st では定義しない（先方サイトを毎日叩かない）。
 
 # --- ST 環境 ---
 [env.st]
@@ -92,13 +92,13 @@ queue = "cinema-ingest-queue-st"
 queue = "cinema-ingest-queue-st"
 max_batch_size = 1
 max_concurrency = 1
-# fetch_failed のみ Queues 標準リトライ対象（docs/06 §7）。3回失敗で consumer 側が ack して打ち切る。
+# fetch_failed のみ Queues 標準リトライ対象（docs/spec/06 §7）。3回失敗で consumer 側が ack して打ち切る。
 # 指数バックオフ（初回5分後）は msg.retry({delaySeconds}) で consumer 側が明示的に計算する（queue()）。
 max_retries = 3
 
-# ST の Cron は原則 OFF（docs/14 §3.2。開発中に先方サイトを毎日叩かないため）。ここに
+# ST の Cron は原則 OFF（docs/spec/11 §3.2。開発中に先方サイトを毎日叩かないため）。ここに
 # [env.st.triggers] を置かない。定期実行を検証したいときだけ日付固定の one-shot 式で
-# 一時追加し、検証後に必ず削除する（手順は docs/16 §4.4。P1-6 Step B で実施済み）。
+# 一時追加し、検証後に必ず削除する（手順は docs/guides/01 §4.4。P1-6 Step B で実施済み）。
 
 # --- 本番環境（Cron 有効。21:00 UTC = 06:00 JST。N-02 の鮮度要件）---
 [env.prod]
@@ -141,11 +141,11 @@ queue = "cinema-ingest-queue-prod"
 queue = "cinema-ingest-queue-prod"
 max_batch_size = 1
 max_concurrency = 1
-# fetch_failed のみ Queues 標準リトライ対象（docs/06 §7）。3回失敗で consumer 側が ack して打ち切る。
+# fetch_failed のみ Queues 標準リトライ対象（docs/spec/06 §7）。3回失敗で consumer 側が ack して打ち切る。
 # 指数バックオフ（初回5分後）は msg.retry({delaySeconds}) で consumer 側が明示的に計算する（queue()）。
 max_retries = 3
 
 [env.prod.triggers]
 # 毎日 21:00 UTC = 06:00 JST: 取込ディスパッチ / 月曜 18:00 UTC = 火曜 03:00 JST: TravelMatrix 週次（ADR-0014）
-# 毎日 17:00 UTC = 02:00 JST: データ保持の期限削除（P5-5・docs/11 §7）
+# 毎日 17:00 UTC = 02:00 JST: データ保持の期限削除（P5-5・docs/spec/09 §7）
 crons = ["0 21 * * *", "0 18 * * 1", "0 17 * * *"]

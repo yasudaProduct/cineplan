@@ -56,7 +56,7 @@ export function createLlmClient(env: LlmEnv, modality: ExtractMethod): LlmClient
   }
 }
 
-// ```json フェンス等を除去して JSON 本体を得る（docs/06 §4 の防御的処理）。
+// ```json フェンス等を除去して JSON 本体を得る（docs/spec/06 §4 の防御的処理）。
 export function stripJsonFence(raw: string): string {
   const t = raw.trim()
   const fenced = t.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)

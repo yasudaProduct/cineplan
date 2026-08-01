@@ -11,7 +11,7 @@ import { selectPlans } from './kbest'
 import { createTravelResolver, resolveEndpointMinutes } from './travel'
 import type { Candidate, PlanContext } from './types'
 
-// /plan エントリ（docs/12 §8）。infeasible 判定順は docs/05 §7 準拠。
+// /plan エントリ（docs/spec/10 §8）。infeasible 判定順は docs/spec/05 §7 準拠。
 
 const isoToMin = (iso: string): number => Math.floor(Date.parse(iso) / 60_000)
 
@@ -21,7 +21,7 @@ export async function plan(
   req: PlanRequest,
   opts?: { transitApiBase?: string },
 ): Promise<PlanResponse> {
-  // 1. データ未取込 → 422（docs/11 §5.4）
+  // 1. データ未取込 → 422（docs/spec/09 §5.4）
   if (!(await isDataReady(db, req.date))) {
     throw new ApiHttpError(422, 'DATA_NOT_READY', '対象日の上映データが未取込です')
   }
@@ -39,7 +39,7 @@ export async function plan(
   const theaterRows = await listTheaterRows(db)
   const theaters = theaterRows.map(toTheaterGeo)
 
-  // origin/destination 解決（docs/04 設計メモ7・docs/05 §5）:
+  // origin/destination 解決（docs/spec/04 設計メモ7・docs/spec/05 §5）:
   // ①劇場最寄駅一致 → ②未知の駅名は station-geo（ls8h ジオコーディング・KV 30日）で座標化して
   // 直線距離推定 → ③解決不能は 400。
   const resolveEndpoint = async (loc: PlanRequest['origin']): Promise<Map<string, number>> => {
@@ -71,9 +71,9 @@ export async function plan(
     }
   }
 
-  // 候補ロード + フィルタ（docs/05 §2）
+  // 候補ロード + フィルタ（docs/spec/05 §2）
   const rows = await loadCandidates(db, req.date)
-  // 対象日の上映0件（取込済みだが上映なし）はフィルタ前に判定する（docs/05 §7・docs/12 §8）。
+  // 対象日の上映0件（取込済みだが上映なし）はフィルタ前に判定する（docs/spec/05 §7・docs/spec/10 §8）。
   // フィルタ後に0件になるケースは「時間帯を広げれば観られる」= time_window_too_narrow 側。
   if (rows.length === 0) {
     return { plans: [], infeasible: { reason: 'no_screenings', relaxSuggestions: [] } }

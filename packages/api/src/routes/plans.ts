@@ -12,7 +12,7 @@ import { Hono } from 'hono'
 import { getSharedPlan, insertSharedPlan } from '../db/shared-plans'
 import type { Env } from '../env'
 
-// 共有プラン（P5-1。F-12/F-13・docs/04 /plans）。
+// 共有プラン（P5-1。F-12/F-13・docs/spec/04 /plans）。
 // POST: 表示中の Plan を永続化して共有 URL を発行（共有ボタンを押した Plan だけを書く。設計メモ2）。
 // GET: スナップショットをそのまま返す（再計算しない）。期限切れ・不存在は同じ 404（設計メモ9）。
 
@@ -87,7 +87,7 @@ plansRoute.get('/:planId', async (c) => {
   return c.json(plan, 200, { 'cache-control': CACHE_CONTROL })
 })
 
-// 共有ページ用の .ics（docs/04 設計メモ3。結果画面はクライアント生成で本エンドポイントを使わない）
+// 共有ページ用の .ics（docs/spec/04 設計メモ3。結果画面はクライアント生成で本エンドポイントを使わない）
 plansRoute.get('/:planId/ics', async (c) => {
   const plan = await loadActivePlan(c.env, c.req.param('planId'))
   if (!plan) {

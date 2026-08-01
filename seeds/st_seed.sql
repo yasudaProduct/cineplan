@@ -1,12 +1,12 @@
 -- seeds/st_seed.sql — ST 環境の劇場マスタ seed（P4-0）。
 -- 適用: wrangler d1 execute cinema_hashigo_st --remote --file ../../seeds/st_seed.sql（api パッケージから）。
 --
--- ST には「採用プロセス（docs/08 §2・docs/16 §2.2）を通過した実劇場」のみを入れる。
+-- ST には「採用プロセス（docs/spec/08 §2・docs/guides/01 §2.2）を通過した実劇場」のみを入れる。
 -- 開発用ダミーは含めない（それは dev_seed.sql／ローカル限定）。P4-3 の劇場マスタ CRUD が
 -- 入るまでの暫定手段として SQL で投入する。
 --
 -- シネ・ヌーヴォは status=paused で投入。受入プロセス（手動取込→レビュー全件目視→
--- 3日連続 succeeded）を経て、人間が active 昇格するまで公開 API には出さない（docs/08 §0）。
+-- 3日連続 succeeded）を経て、人間が active 昇格するまで公開 API には出さない（docs/spec/08 §0）。
 -- INSERT OR IGNORE: 再実行で既存行（人間が active 昇格した後など）を paused に戻さない。
 INSERT OR IGNORE INTO theaters (id,name,short_name,status,lat,lng,nearest_station,
   walk_min_from_sta,schedule_url,fetch_method,extract_method,official_url,

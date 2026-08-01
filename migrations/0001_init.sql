@@ -1,4 +1,4 @@
--- 0001_init.sql — 全テーブル定義・インデックス（docs/11 §1 / docs/03 §3）
+-- 0001_init.sql — 全テーブル定義・インデックス（docs/spec/09 §1 / docs/spec/03 §3）
 -- D1 (SQLite)。FK は宣言のみ（PRAGMA foreign_keys は接続ごと OFF。整合性はアプリ側で担保）。
 
 -- 劇場マスタ

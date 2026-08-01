@@ -62,9 +62,9 @@ describe('normalize', () => {
 
   // review指摘: テアトル梅田で /ttcg_umeda/movie/xxx.html のような相対 detailPath が
   // そのまま D1 に保存され、Plan の ScreeningLeg.officialUrl（z.string().url() 必須）
-  // が invalid_string で落ちていた。docs/06 §6.4「相対URLは scheduleUrl 基準で絶対化」が
+  // が invalid_string で落ちていた。docs/spec/06 §6.4「相対URLは scheduleUrl 基準で絶対化」が
   // 未実装だったことが原因。
-  describe('detailUrl（相対URLの絶対化。docs/06 §6.4）', () => {
+  describe('detailUrl（相対URLの絶対化。docs/spec/06 §6.4）', () => {
     it('相対パスは scheduleUrl 基準で絶対化する', () => {
       const [row] = normalize(
         result([

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { reapStaleRuns } from '../ingest-runs'
 
-// 孤児run の掃除（fix/p4-manual-ingest-orphan・docs/06 §7）。ブラウザ接続断などで
+// 孤児run の掃除（fix/p4-manual-ingest-orphan・docs/spec/06 §7）。ブラウザ接続断などで
 // Workers の実行がキャンセルされ queued/fetching/extracting のまま更新が止まった run を
 // extraction_failed に確定する。戻り値は掃除した run の id 一覧
 // （feat/ingest-observability: reap.done ログで追跡するため件数から変更）。

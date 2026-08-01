@@ -7,7 +7,7 @@ import { HHMM } from './plan'
 // （例 "10:75"）が regex を素通りし、normalizeStart の setHours が silent に
 // 別時刻（11:15）へ丸めてしまう。時・分双方の値域を境界で弾く。
 
-describe('ExtractedScreening.startTime（時0〜29・分00〜59。docs/06 §3・§6）', () => {
+describe('ExtractedScreening.startTime（時0〜29・分00〜59。docs/spec/06 §3・§6）', () => {
   const valid = (startTime: string) =>
     ExtractedScreening.safeParse({ movieTitle: 'x', startTime }).success
 
@@ -30,7 +30,7 @@ describe('ExtractedScreening.startTime（時0〜29・分00〜59。docs/06 §3・
   })
 })
 
-describe('ExtractedDateList（text 日分割の日付発見コール。docs/06 §4・ADR-0017）', () => {
+describe('ExtractedDateList（text 日分割の日付発見コール。docs/spec/06 §4・ADR-0017）', () => {
   it('YYYY-MM-DD の配列を許容し、notes は省略・null とも可', () => {
     expect(ExtractedDateList.safeParse({ dates: ['2026-07-21', '2026-07-22'] }).success).toBe(true)
     expect(ExtractedDateList.safeParse({ dates: [], notes: null }).success).toBe(true)
@@ -48,7 +48,7 @@ describe('ExtractedDateList（text 日分割の日付発見コール。docs/06 �
   })
 })
 
-describe('PlanRequest の HHMM（時00〜23・分00〜59・24時超え不可。docs/04）', () => {
+describe('PlanRequest の HHMM（時00〜23・分00〜59・24時超え不可。docs/spec/04）', () => {
   const valid = (s: string) => HHMM.safeParse(s).success
 
   it('通常の時刻表記を許容する', () => {
@@ -67,7 +67,7 @@ describe('PlanRequest の HHMM（時00〜23・分00〜59・24時超え不可。d
     expect(valid('25:10')).toBe(false)
   })
 
-  it('1桁時は拒否する（API 入力は常に2桁固定。docs/04 example "09:00"）', () => {
+  it('1桁時は拒否する（API 入力は常に2桁固定。docs/spec/04 example "09:00"）', () => {
     expect(valid('9:00')).toBe(false)
   })
 })

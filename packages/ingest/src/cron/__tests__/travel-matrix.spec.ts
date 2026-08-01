@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// TravelMatrix 週次生成（P4-6・ADR-0014・docs/03 §5.1）のユニットテスト。
+// TravelMatrix 週次生成（P4-6・ADR-0014・docs/spec/03 §5.1）のユニットテスト。
 // 実 API は叩かず fetch をモック。要点: door-to-door 分の計算・複数案の最小値・
 // summaries 連結・失敗ペアの前回値温存・全滅時の未書込・retired 除外。
 

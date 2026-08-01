@@ -1,7 +1,7 @@
 # 環境構成・デプロイ設計 — ローカル / ST / 本番
 
 - Version: 0.1
-- 関連: `11_d1-implementation.md`（マイグレーション）, `08_compliance-policy.md`（シークレット・取得マナー）, ADR-0001（Cloudflare採用）
+- 関連: `spec/09_d1-implementation.md`（マイグレーション）, `08_compliance-policy.md`（シークレット・取得マナー）, ADR-0001（Cloudflare採用）
 - 方針決定: 開発DBは **Cloudflare D1（SQLite）のまま**。D1 は Docker Compose で立てられないため、Compose はDB本体ではなく周辺サービス（モック等）に用いる（§2）。
 
 ## 1. 環境一覧（3環境）
@@ -160,7 +160,7 @@ APP_ENV = "prod"
 - コードに直書きしない（`08_compliance-policy.md` §4）。区分は以下。
   - **vars（非機密・平文可）**: `APP_ENV`, 外部APIのベースURL等 → wrangler.toml の `[env.*.vars]`。
   - **secret（機密）**: LLM APIキー / Slack Webhook URL / `ADMIN_TOKEN`（手動取込エンドポイント保護。local 以外は必須・未設定は fail closed で 401） → `wrangler secret put <NAME> --env st|prod`。
-- **/admin の認証（P4-1 以降）**: 一次防御はエッジの Cloudflare Access（16 §4.1。未認証は 302）。コード側ガード（local 以外）は `x-admin-token` 一致 **または** Access 通過の証跡 `Cf-Access-Jwt-Assertion` ヘッダの存在で通す（どちらも無ければ 401）。JWT の署名・aud 検証は未実施＝Access が前段にある前提の tripwire（強化は P5 で検討）。
+- **/admin の認証（P4-1 以降）**: 一次防御はエッジの Cloudflare Access（guides/01 §4.1。未認証は 302）。コード側ガード（local 以外）は `x-admin-token` 一致 **または** Access 通過の証跡 `Cf-Access-Jwt-Assertion` ヘッダの存在で通す（どちらも無ければ 401）。JWT の署名・aud 検証は未実施＝Access が前段にある前提の tripwire（強化は P5 で検討）。
 - local は `.dev.vars`（gitignore）でローカル秘密を与える。スタブ向き先もここで上書き。
 
 ```
@@ -212,7 +212,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm lint
-      - run: pnpm test          # DP期待値テスト（12 §7）を含む
+      - run: pnpm test          # DP期待値テスト（spec/10 §7）を含む
 ```
 
 ### 5.4 deploy-st.yml（develop push で ST へ）
@@ -322,7 +322,7 @@ st:     （develop push で Actions が）apply ... cinema_hashigo_st --env st -
 prod:   （v* タグ + 承認で Actions が）apply ... cinema_hashigo_prod --env prod --remote
 ```
 
-- マイグレーションは前方のみ（`11 §1`）。破壊的変更はデータ移行スクリプトを別マイグレーションで用意。
+- マイグレーションは前方のみ（`spec/09 §1`）。破壊的変更はデータ移行スクリプトを別マイグレーションで用意。
 - st で流したマイグレーションが問題ないことを確認してから prod タグを切る運用。
 
 ## 7. ロールバック方針

@@ -40,7 +40,7 @@ export function addDaysJst(date: string, days: number): string {
   return dateFmt.format(new Date(t))
 }
 
-// 終電注意バッジ（docs/05 §5: end が 23:00 以降なら UI 側で注意表示）
+// 終電注意バッジ（docs/spec/05 §5: end が 23:00 以降なら UI 側で注意表示）
 export function isLateNight(iso: string): boolean {
   return jstHour(iso) >= 23
 }

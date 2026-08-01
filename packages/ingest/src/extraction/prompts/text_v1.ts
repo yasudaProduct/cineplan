@@ -1,4 +1,4 @@
-// HTML（text）スケジュール抽出プロンプト v1（docs/06 §4。P4-7 の rendered 劇場用）。
+// HTML（text）スケジュール抽出プロンプト v1（docs/spec/06 §4。P4-7 の rendered 劇場用）。
 // 既存版は変更せず、修正は新版追加。ingest_runs.prompt_version に 'text_v1' を記録する。
 
 export const TEXT_V1_VERSION = 'text_v1'
@@ -19,7 +19,7 @@ export function buildTextV1SystemPrompt(businessMonth: string): string {
 - 各 screening は必ず movieTitle・startTime(HH:MM) を持たせること。businessDate は当月（${businessMonth}）内の任意の1日でよい。余分なキーを足さないこと。`
 }
 
-// LLM へ渡すユーザーテキスト（docs/06 §4 骨子の <page> ラッパ）
+// LLM へ渡すユーザーテキスト（docs/spec/06 §4 骨子の <page> ラッパ）
 export function buildTextV1UserText(
   scheduleUrl: string,
   businessMonth: string,

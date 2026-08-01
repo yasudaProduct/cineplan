@@ -39,8 +39,8 @@ import { RunDetailPage, RunListPage } from './pages/runs'
 import { ScreeningsPage } from './pages/screenings'
 import { TheaterEditPage, TheaterListPage, TheaterNewPage } from './pages/theaters'
 
-// 管理サイト（docs/07 §2）。エッジの Cloudflare Access（P4-1）+ コード側 adminGuard の多層。
-// SSR のみ・フォーム POST → リダイレクト（PRG）。クライアント JS なし（docs/07 §3）。
+// 管理サイト（docs/spec/07 §2）。エッジの Cloudflare Access（P4-1）+ コード側 adminGuard の多層。
+// SSR のみ・フォーム POST → リダイレクト（PRG）。クライアント JS なし（docs/spec/07 §3）。
 export const adminApp = new Hono<{ Bindings: Env }>()
 
 adminApp.use('*', adminGuard)
@@ -94,7 +94,7 @@ adminApp.post('/travel-matrix/rebuild', async (c) => {
   return c.redirect(`/admin?msg=${encodeURIComponent(msg)}`)
 })
 
-// データ保持の期限削除を手動実行（P5-5・docs/11 §7）。prod は日次 Cron が回すが、
+// データ保持の期限削除を手動実行（P5-5・docs/spec/09 §7）。prod は日次 Cron が回すが、
 // Cron を持たない ST での検証・随時実行用に置く（外部アクセスなし・D1 の削除のみ）。
 adminApp.post('/retention/run', async (c) => {
   const r = await runRetention(c.env.DB)
@@ -198,7 +198,7 @@ adminApp.post('/theaters/:id', async (c) => {
   return c.redirect(`/admin/theaters/${id}?msg=${encodeURIComponent('保存しました')}`)
 })
 
-// status 変更。active 昇格は robots/terms のゲートをサーバ側で強制（docs/08 §0 ルール5）。
+// status 変更。active 昇格は robots/terms のゲートをサーバ側で強制（docs/spec/08 §0 ルール5）。
 adminApp.post('/theaters/:id/status', async (c) => {
   const id = c.req.param('id')
   const t = await getTheater(c.env.DB, id)
@@ -207,7 +207,7 @@ adminApp.post('/theaters/:id/status', async (c) => {
   const parsed = TheaterStatus.safeParse(String(f.get('status') ?? ''))
   if (!parsed.success) return c.redirect(`/admin/theaters/${id}?err=invalid+status`)
   if (parsed.data === 'active' && (t.robotsStatus !== 'allowed' || !t.termsCheckedAt)) {
-    const msg = `active 昇格不可: robots_status=allowed かつ terms_checked_at 記入済みが必要です（現在 robots=${t.robotsStatus}, terms=${t.termsCheckedAt ?? '未確認'}。docs/08 §0 ルール5）`
+    const msg = `active 昇格不可: robots_status=allowed かつ terms_checked_at 記入済みが必要です（現在 robots=${t.robotsStatus}, terms=${t.termsCheckedAt ?? '未確認'}。docs/spec/08 §0 ルール5）`
     return c.redirect(`/admin/theaters/${id}?err=${encodeURIComponent(msg)}`)
   }
   await updateTheaterStatus(c.env.DB, id, parsed.data)
@@ -218,9 +218,9 @@ adminApp.post('/theaters/:id/status', async (c) => {
 })
 
 // 手動取込（F-33。先方サイトへアクセスする）。prod は cron のみ。
-// 同一サイト1日1回（docs/08 §3）: 本日取得済みなら force チェック（人間の明示判断）を要求。
+// 同一サイト1日1回（docs/spec/08 §3）: 本日取得済みなら force チェック（人間の明示判断）を要求。
 // Queue に trigger='manual' で投入し cron と同じ consumer 経路で処理する
-// （fix/p4-manual-ingest-orphan・docs/06 §7）。ブラウザ接続に処理を同期させないため、
+// （fix/p4-manual-ingest-orphan・docs/spec/06 §7）。ブラウザ接続に処理を同期させないため、
 // 接続断で run が extracting のまま孤児化する不具合が起きない。
 // コンプライアンスチェックはここで即時実行（ユーザーへの即時フィードバック用）+
 // Queue消費時にも ingestTheater 内で再実行される（cron と同じ多層防御。compliance-guard.ts）。
@@ -243,7 +243,7 @@ adminApp.post('/theaters/:id/ingest', async (c) => {
   const force = f.get('force') === '1'
   const todayFetches = await countTodaySiteFetches(c.env.DB, id, jstDayStartIso(todayJst()))
   if (todayFetches > 0 && !force) {
-    const msg = `本日すでに ${todayFetches} 回取得済みです。2回目を実行するには「許可する」にチェックしてください（docs/08 §3）`
+    const msg = `本日すでに ${todayFetches} 回取得済みです。2回目を実行するには「許可する」にチェックしてください（docs/spec/08 §3）`
     return c.redirect(`/admin/theaters/${id}?err=${encodeURIComponent(msg)}`)
   }
   await c.env.INGEST_QUEUE.send({ theaterId: id, trigger: 'manual' })
@@ -304,7 +304,7 @@ adminApp.get('/runs/:id', async (c) => {
 
 // R2 再抽出（F-21。先方再取得なし）。prod でも実行可（サイトアクセスが無いため）。
 // Queue に {reextractRunId} で投入し cron/手動取込と同じ consumer 経路で処理する
-// （fix/reextract-orphan・docs/06 §7）。ブラウザ接続に処理を同期させないため、大きな
+// （fix/reextract-orphan・docs/spec/06 §7）。ブラウザ接続に処理を同期させないため、大きな
 // rendered ページで抽出（Gemini呼出）が数分かかっても接続断で孤児化しない。
 adminApp.post('/runs/:id/reextract', async (c) => {
   const id = c.req.param('id')
@@ -376,7 +376,7 @@ adminApp.post('/reviews/:id/reject', async (c) => {
   const note = String(f.get('note') ?? '').trim()
   if (!note) {
     return c.redirect(
-      `/admin/reviews/${id}?err=${encodeURIComponent('破棄には理由メモが必須です（docs/07 §2.5）')}`,
+      `/admin/reviews/${id}?err=${encodeURIComponent('破棄には理由メモが必須です（docs/spec/07 §2.5）')}`,
     )
   }
   const ok = await rejectReview(c.env.DB, id, note)
@@ -386,9 +386,9 @@ adminApp.post('/reviews/:id/reject', async (c) => {
     : c.redirect(`/admin/reviews/${id}?err=${encodeURIComponent('pending ではありません')}`)
 })
 
-// ---- 上映データ（抽出検証・ADR-0015。docs/07 §2.6）----
+// ---- 上映データ（抽出検証・ADR-0015。docs/spec/07 §2.6）----
 // 取込済み screenings の検証閲覧。D1 読取のみで先方サイトへのアクセスは無い。
-// 利用者向けに出さない・JSON API 化しない（docs/08 §1 原則1 注記の条件）。
+// 利用者向けに出さない・JSON API 化しない（docs/spec/08 §1 原則1 注記の条件）。
 adminApp.get('/screenings', async (c) => {
   const theaters = await listAllTheaters(c.env.DB)
   const qid = c.req.query('theaterId')

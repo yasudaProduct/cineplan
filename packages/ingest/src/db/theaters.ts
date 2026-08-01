@@ -60,8 +60,8 @@ export async function getTheater(db: D1Database, id: string): Promise<TheaterRec
   return row ? toRecord(row) : null
 }
 
-// cron の取込対象（active かつ robots/規約確認済みのみ。docs/08 の多層防御）。
-// 人間の運用（採用プロセス。docs/08 §2）が一次防御だが、コード側でも
+// cron の取込対象（active かつ robots/規約確認済みのみ。docs/spec/08 の多層防御）。
+// 人間の運用（採用プロセス。docs/spec/08 §2）が一次防御だが、コード側でも
 // robots_status='allowed' かつ terms_checked_at 有り以外は対象から除外する。
 export async function listActiveTheaters(db: D1Database): Promise<TheaterRecordT[]> {
   const { results } = await db
@@ -74,7 +74,7 @@ export async function listActiveTheaters(db: D1Database): Promise<TheaterRecordT
   return results.map(toRecord)
 }
 
-// ---- 管理サイト用 CRUD（P4-3。docs/07 §2.3）----
+// ---- 管理サイト用 CRUD（P4-3。docs/spec/07 §2.3）----
 
 // 全劇場（管理一覧用。retired 含む）。
 export async function listAllTheaters(db: D1Database): Promise<TheaterRecordT[]> {
@@ -82,7 +82,7 @@ export async function listAllTheaters(db: D1Database): Promise<TheaterRecordT[]>
   return results.map(toRecord)
 }
 
-// 新規劇場は必ず paused で起票する（docs/06 §9 受入手順・docs/08 §2 採用プロセス）。
+// 新規劇場は必ず paused で起票する（docs/spec/06 §9 受入手順・docs/spec/08 §2 採用プロセス）。
 export async function createTheater(db: D1Database, input: TheaterUpsertT): Promise<string> {
   const id = newId('thr')
   await db

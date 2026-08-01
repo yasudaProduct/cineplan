@@ -1,7 +1,7 @@
 import type { Context, Next } from 'hono'
 import type { Env } from '../env'
 
-// /admin 配下のコード側ガード（docs/14 §4・docs/16 §3.6/§4.1）。
+// /admin 配下のコード側ガード（docs/spec/11 §4・docs/guides/01 §3.6/§4.1）。
 // - local: スキップ（開発の摩擦回避）
 // - それ以外: 一次防御はエッジの Cloudflare Access（P4-1。未認証は 302 でここまで届かない）。
 //   コード側は (a) x-admin-token 一致（curl 用の backstop）または

@@ -6,7 +6,7 @@ import { buildOgSvg } from '../lib/og-image'
 import { summarizePlan } from '../lib/plan-summary'
 import type { Route } from './+types/share-og'
 
-// OGP 動的画像 /p/{planId}/og.png（P5-2・docs/07 §1.5）。
+// OGP 動的画像 /p/{planId}/og.png（P5-2・docs/spec/07 §1.5）。
 // 手書き SVG テンプレート（lib/og-image.ts）を resvg-wasm で PNG 化する。
 // フォントは Noto Sans JP のサブセット（app/assets/og-font.ttf・約65KB・OFL）。
 // X/Facebook のクローラは SVG の og:image を解さないため PNG で返す。
@@ -40,7 +40,7 @@ export async function loader({ params }: Route.LoaderArgs) {
   return new Response(png.buffer as ArrayBuffer, {
     headers: {
       'content-type': 'image/png',
-      // 不変スナップショット由来（docs/04 設計メモ11 と同趣旨）。期限切れ後も最大1日
+      // 不変スナップショット由来（docs/spec/04 設計メモ11 と同趣旨）。期限切れ後も最大1日
       // キャッシュに残りうるが、画像単体に個人情報は無く実害なし。
       'cache-control': 'public, max-age=86400',
     },

@@ -1,4 +1,4 @@
-// データ未取込の判定（docs/11 §5.4）。
+// データ未取込の判定（docs/spec/09 §5.4）。
 // 月間画像の vision 取込（ADR-0012）は 1 回で複数 businessDate を書き込むため、
 // 「対象日の screenings が存在する or 対象日の succeeded run が存在する」を ready とする。
 // いずれも active 劇場に限定する: planner の候補ロード・origin 解決は active のみ対象のため、

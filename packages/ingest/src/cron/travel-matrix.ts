@@ -6,7 +6,7 @@ import type { Env } from '../env'
 import { logError, logInfo } from '../log'
 import { USER_AGENT } from '../worker/fetch'
 
-// TravelMatrix 週次生成（P4-6・docs/03 §5.1・ADR-0014）。
+// TravelMatrix 週次生成（P4-6・docs/spec/03 §5.1・ADR-0014）。
 // ls8h Transit API の /api/v1/plan を劇場座標 geo→geo で引き、door-to-door 所要分を
 // KV `travel-matrix:v1` に保存する。planner（api）は実行時に外部 API を呼ばず KV のみ参照。
 // 取得マナー: 直列・1秒以上間隔・正直 UA（ToS の「過度なリクエスト」禁止への配慮）。
@@ -41,7 +41,7 @@ export function representativeDate(now: Date = new Date()): string {
 
 // 1ペア分の経路取得 → { minutes, summary } | null。
 // door-to-door 分 = ceil((accessWalkSecs + durationSecs) / 60)（egress は durationSecs に含まれる。
-// 実 API で確認済み・docs/03 §5.1）。複数案の最小値を採る。
+// 実 API で確認済み・docs/spec/03 §5.1）。複数案の最小値を採る。
 // label はログ用のペア識別子（例 'thr_a>thr_b'）。失敗は matrix.pair.fail に記録し null を返す
 // （呼出側は前回値温存 = 従来挙動のまま。どのペアがなぜ失敗したかだけ可視化する）。
 export async function fetchPairMinutes(

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import app from '../index'
 
-// web（別オリジン）からのブラウザ fetch を許可する CORS（docs/04 設計メモ6）。
+// web（別オリジン）からのブラウザ fetch を許可する CORS（docs/spec/04 設計メモ6）。
 
 describe('CORS on /v1/*', () => {
   it('preflight (OPTIONS) に Access-Control-Allow-Origin: * を返す', async () => {

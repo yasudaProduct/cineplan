@@ -47,7 +47,7 @@ describe('compareScore', () => {
   it('同本数なら移動が少ない方が良い', () => {
     expect(isBetter(base, { ...base, travel: 50 })).toBe(true)
   })
-  it('本数・移動が同値なら待ちが少ない方が良い（docs/05 §8 のタイブレーク）', () => {
+  it('本数・移動が同値なら待ちが少ない方が良い（docs/spec/05 §8 のタイブレーク）', () => {
     const a: Score = { count: 3, travel: 30, wait: 45, endMin: 1080, lastId: 's5' }
     const b: Score = { count: 3, travel: 30, wait: 65, endMin: 1080, lastId: 's5' }
     expect(isBetter(a, b)).toBe(true)

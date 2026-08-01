@@ -1,6 +1,6 @@
 import type { Score } from '../schemas/plan'
 
-// 目的関数の辞書式比較（docs/05 §1 / docs/12 §3）。
+// 目的関数の辞書式比較（docs/spec/05 §1 / docs/spec/10 §3）。
 // すべての最適性判断の単一の基準。乱数・Map イテレーション順に依存しないこと。
 // a が b より良ければ負、悪ければ正、同値 0。
 export function compareScore(a: Score, b: Score): number {

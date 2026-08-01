@@ -6,7 +6,7 @@ import {
   dailyInTokenThreshold,
 } from '../cost-alert'
 
-// LLM コスト急増アラート（P5-6・docs/06 §8・N-07）。
+// LLM コスト急増アラート（P5-6・docs/spec/06 §8・N-07）。
 // 閾値跨ぎ方式: 「この run で初めて閾値以上になった」ときだけ通知する。
 // Queue は直列消費（max_concurrency=1）のため、通知済みフラグ無しで1日1回に収まる。
 
@@ -42,7 +42,7 @@ function fakeEnv(row: { total: number; thisRun: number } | { throwError: true })
 }
 
 describe('dailyInTokenThreshold', () => {
-  it('未設定は既定 500万（docs/06 §8 の初期値）', () => {
+  it('未設定は既定 500万（docs/spec/06 §8 の初期値）', () => {
     expect(dailyInTokenThreshold({} as Env)).toBe(DEFAULT_DAILY_IN_TOKEN_ALERT)
     expect(DEFAULT_DAILY_IN_TOKEN_ALERT).toBe(5_000_000)
   })

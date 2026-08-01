@@ -37,13 +37,13 @@ Fetch (static fetch / Browser Rendering)
 6. **常に無情報と言えるノイズ領域のみ除去する**（2026-07-20 追加。5とは別軸: 5は「サイト依存のヒューリスティックでスケジュール領域を当てにいく」ことの禁止、6は「HTML5の意味論・実装上の制約から常に安全と言える除去」の許可）。`header`/`footer`/`nav`（HTML5上サイト共通のチロム）・`meta`/`link`（void要素）・`img`（href以外の属性を保持しない実装のため常に無内容）は無条件除去。`figure`/`iframe`はタグを剥がした結果が空文字の場合のみ除去（キャプション付きfigure等、テキストを含む場合は保持する安全側の実装）。大阪ステーションシネマの実データで検証済み（27,862字→21,303字・24%減、時刻347件・detailPathの一意性30件とも完全一致）。実装は`worker/preprocess.ts`の`stripNoise`。
 
 ### 2.0 rendered（JS 描画サイト）の取得（P4-7）
-- `fetch_method=rendered` の劇場は Cloudflare Browser Rendering（`BROWSER` バインディング + @cloudflare/puppeteer）で描画後の DOM を取得する。1回の取込 = 1回のページロード（既定 `fetch_day_mode='single'`）。`tabs` の劇場は同一ページ上で日付タブを順にクリックし、1日1文書分の DOM を取得する（§2.2）。取得マナーは static と同じ（正直 UA・30s タイムアウト。docs/08 §3）。
+- `fetch_method=rendered` の劇場は Cloudflare Browser Rendering（`BROWSER` バインディング + @cloudflare/puppeteer）で描画後の DOM を取得する。1回の取込 = 1回のページロード（既定 `fetch_day_mode='single'`）。`tabs` の劇場は同一ページ上で日付タブを順にクリックし、1日1文書分の DOM を取得する（§2.2）。取得マナーは static と同じ（正直 UA・30s タイムアウト。docs/spec/08 §3）。
 - 描画後 HTML を R2 に保存し（`{prefix}.html`。複数日取得時は各日 `{prefix}_d{date}.html` も）、以降の再抽出はこのスナップショットから行う（先方再取得なし）。画像のダウンロードは行わない（rendered は text 抽出前提）。
-- ローカル開発でも `wrangler dev` がローカル Chromium を起動するため実機同等に検証できる（docs/14 §8）。
+- ローカル開発でも `wrangler dev` がローカル Chromium を起動するため実機同等に検証できる（docs/spec/11 §8）。
 
 ### 2.2 複数日取得（fetch_day_mode。ADR-0019）
 
-1ページに1日分しか掲載しないサイト（T・ジョイ梅田等）向けに、**劇場ごとの設定**で1セッション内に複数日分のページを取得する。取得マナー（5秒間隔・直列・上限）は docs/08 §0・§3 が正。
+1ページに1日分しか掲載しないサイト（T・ジョイ梅田等）向けに、**劇場ごとの設定**で1セッション内に複数日分のページを取得する。取得マナー（5秒間隔・直列・上限）は docs/spec/08 §0・§3 が正。
 
 - `fetch_day_mode`: `single`（既定・現行動作＝1ページ）/ `tabs`（Browser Rendering で日付タブを順にクリック。`fetch_method=rendered` 必須）/ `url_template`（`schedule_url` の `{date}` を置換して日付ごとに静的取得。`fetch_method=static`）。
 - `fetch_days`: 取得日数。`0` = 検出したタブ全件（`tabs` のみ）。いずれもコード側の絶対上限 `MAX_FETCH_DAYS`=10 で頭打ち（`packages/shared`。DB の CHECK・zod・fetch 実装の三重で守る）。
@@ -60,7 +60,7 @@ Fetch (static fetch / Browser Rendering)
 ### 2.1 vision（画像）の前処理
 - schedule ページ HTML を取得し `image/schedule/*.gif` 等の画像 URL を抽出 → 各画像を取得 → R2 保存。
 - 画像バイトを base64 化して LLM に渡す（Gemini=`inline_data`、Ollama=`images[]`）。過大な画像のみ縮小（初期は素通し。cinenouveau は 1枚 ≒ 23KB GIF）。
-- 画像そのものは複製・再配布しない。抽出するのは事実データのみ（docs/08 §4・原則1）。
+- 画像そのものは複製・再配布しない。抽出するのは事実データのみ（docs/spec/08 §4・原則1）。
 
 ## 3. 抽出スキーマ（zod / packages/shared）
 

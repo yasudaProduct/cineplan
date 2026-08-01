@@ -2,7 +2,7 @@
 -- ST/prod には適用しない。適用は wrangler d1 execute --local --file で行う（CLAUDE.md 参照）。
 -- 目的: P1 の取込対象 1館目（シネ・ヌーヴォ）をローカルに用意する。
 --
--- 採用状態は paused。docs/08 §0・docs/16 §2.2 の受入プロセス（手動取込→レビュー全件目視→
+-- 採用状態は paused。docs/spec/08 §0・docs/guides/01 §2.2 の受入プロセス（手動取込→レビュー全件目視→
 -- 3日連続 succeeded）を経て人間が active 昇格するまで公開 API には出さない。
 -- 抽出は vision（月間スケジュール画像 GIF を Gemini/Ollama で抽出。ADR-0012）。
 -- robots.txt 無し（許容）・規約にスクレイピング禁止記載なし・アグリゲーター非経由（2026-07-10 確認）。
