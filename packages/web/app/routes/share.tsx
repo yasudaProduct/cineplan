@@ -1,5 +1,6 @@
 import type { ScreeningLeg } from '@cinema/shared'
 import { data, isRouteErrorResponse, Link } from 'react-router'
+import { IconDownload } from '../components/icons'
 import { PlanTimeline } from '../components/PlanTimeline'
 import { fetchSharedPlan, sharedPlanIcsUrl } from '../lib/api'
 import { jstDateValue, shareDescription, shareTitle, summarizePlan } from '../lib/plan-summary'
@@ -53,7 +54,7 @@ export default function SharePage({ loaderData }: Route.ComponentProps) {
       <header className="py-4">
         <p className="text-sm text-neutral-500">{summary.dateLabel}の映画はしごプラン</p>
         <h1 className="text-2xl font-bold">
-          🎬 {summary.movieCount}本はしご
+          {summary.movieCount}本はしご
           {summary.theaterCount > 1 ? `（${summary.theaterCount}館）` : ''}
         </h1>
       </header>
@@ -64,9 +65,10 @@ export default function SharePage({ loaderData }: Route.ComponentProps) {
           {/* .ics はサーバ生成（P5-1 の GET /v1/plans/{id}/ics） */}
           <a
             href={sharedPlanIcsUrl(planId)}
-            className="inline-block rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
+            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
           >
-            ⬇ .ics 保存（カレンダー一括登録）
+            <IconDownload className="shrink-0" />
+            .ics 保存（カレンダー一括登録）
           </a>
         </div>
       </div>

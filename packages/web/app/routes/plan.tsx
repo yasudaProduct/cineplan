@@ -57,7 +57,7 @@ function buildRequest(f: FormState): { req: PlanRequest } | { error: string } {
     return { error: 'スタート地点の駅名を入力してください' }
   }
   if (f.originKind === 'geo' && !f.originGeo) {
-    return { error: '現在地を取得してください（📍ボタン）' }
+    return { error: '現在地を取得してください（「現在地」ボタン）' }
   }
   const origin =
     f.originKind === 'geo' && f.originGeo
@@ -173,7 +173,7 @@ export default function PlanPage() {
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-8">
-      <h1 className="mb-6 text-2xl font-bold">🎬 はしごプランを組む</h1>
+      <h1 className="mb-6 text-2xl font-bold">はしごプランを組む</h1>
 
       <PlanForm
         form={form}

@@ -70,7 +70,7 @@ export async function postPlan(req: PlanRequest): Promise<ApiResult<PlanResponse
 
 // ---- 共有プラン（P5-2。API は P5-1）----
 
-// 共有 URL の発行（結果画面の [🔗 共有] ボタン）
+// 共有 URL の発行（結果画面の [共有URLを発行] ボタン）
 export async function sharePlan(plan: Plan): Promise<ApiResult<SharePlanResponse>> {
   try {
     const res = await fetch(`${API_BASE}/v1/plans`, {

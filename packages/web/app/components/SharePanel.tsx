@@ -2,6 +2,7 @@ import type { Plan } from '@cinema/shared'
 import { useState } from 'react'
 import { sharePlan } from '../lib/api'
 import { shareDescription, shareTitle, summarizePlan } from '../lib/plan-summary'
+import { IconCheck, IconLink, IconShare } from './icons'
 
 // 共有ボタン + 共有手段（P5-2・F-12・docs/spec/07 §1.5）。
 // POST /v1/plans で URL を発行し、コピー / Web Share API（対応端末）/ X / LINE を出す。
@@ -56,9 +57,10 @@ export function SharePanel({ plan }: { plan: Plan }) {
           type="button"
           onClick={issue}
           disabled={state.kind === 'sharing'}
-          className="rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50 disabled:opacity-50"
         >
-          {state.kind === 'sharing' ? '発行中…' : '🔗 共有URLを発行'}
+          <IconLink className="shrink-0" />
+          {state.kind === 'sharing' ? '発行中…' : '共有URLを発行'}
         </button>
         {state.kind === 'error' && <p className="text-sm text-red-700">{state.message}</p>}
       </div>
@@ -80,9 +82,10 @@ export function SharePanel({ plan }: { plan: Plan }) {
         <button
           type="button"
           onClick={() => copy(url)}
-          className="shrink-0 rounded-md border border-neutral-300 bg-white px-3 py-1 text-sm hover:bg-neutral-100"
+          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-neutral-300 bg-white px-3 py-1 text-sm hover:bg-neutral-100"
         >
-          {copied ? '✓ コピーしました' : 'コピー'}
+          {copied && <IconCheck className="shrink-0 text-green-600" />}
+          {copied ? 'コピーしました' : 'コピー'}
         </button>
       </div>
       <p className="flex flex-wrap gap-3 text-sm">
@@ -90,9 +93,10 @@ export function SharePanel({ plan }: { plan: Plan }) {
           <button
             type="button"
             onClick={() => openShareSheet(url)}
-            className="text-blue-700 underline"
+            className="inline-flex items-center gap-1 text-blue-700 underline"
           >
-            📤 共有…
+            <IconShare className="shrink-0" />
+            共有…
           </button>
         )}
         <a
