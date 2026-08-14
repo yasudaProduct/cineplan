@@ -20,7 +20,7 @@ function addMinutesIso(iso: string, min: number): string {
   return new Date(new Date(iso).getTime() + min * 60_000).toISOString()
 }
 
-// detailPath（LLM抽出・未検証の文字列）→ 絶対URL（docs/06 §6.4）。
+// detailPath（LLM抽出・未検証の文字列）→ 絶対URL（docs/spec/06 §6.4）。
 // 相対URLは scheduleUrl 基準で絶対化、外部ドメイン（チケットベンダー等）はそのまま保持。
 // http(s) 以外のスキーム（javascript: 等。href の誤抽出で混入しうる）や、絶対化しても
 // パース不能な文字列は null にする（呼び出し側 build.ts が theater の officialUrl へ
@@ -38,7 +38,7 @@ function resolveDetailUrl(
   }
 }
 
-// 各 screening を UTC 化（docs/06 §6）。実効 businessDate は date ?? result.businessDate。
+// 各 screening を UTC 化（docs/spec/06 §6）。実効 businessDate は date ?? result.businessDate。
 // endTime 記載があればそれ、無ければ start + 120 + 10分（予告）の既定（runtime 不明時）。
 // scheduleUrl は detailPath の絶対化の基準（取込元劇場の schedule_url）。
 export function normalize(result: ExtractionResult, scheduleUrl: string): PreNormalized[] {

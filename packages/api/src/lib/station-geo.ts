@@ -1,14 +1,15 @@
 import type { StationGeo as StationGeoT } from '@cinema/shared'
 import { STATION_GEO_TTL_SECONDS, StationGeo, stationGeoKvKey } from '@cinema/shared'
 
-// 駅名 → 座標のジオコーディング（docs/03 §5.2・docs/04 設計メモ7・ADR-0014）。
+// 駅名 → 座標のジオコーディング（docs/spec/03 §5.2・docs/spec/04 設計メモ7・ADR-0014）。
 // ls8h Transit API の /api/v1/locations/suggest を使い、結果は KV に 30日キャッシュする。
 // 外部呼出はキャッシュ未ヒットの初出駅名のみ（利用者リクエスト毎には呼ばない）。
 // 失敗（タイムアウト・不明駅名・API停止）は null を返し、呼び元が 400 にする。
 
 export const TRANSIT_API_DEFAULT_BASE = 'https://api.transit.ls8h.com'
 const SUGGEST_TIMEOUT_MS = 4000
-const USER_AGENT = 'CinemaHashigoBot/0.1 (+https://example.com/bot)'
+// ingest/worker/fetch.ts・web/app/lib/site.ts と同一値に保つ（ADR-0021。到達可能な /bot を指す）
+const USER_AGENT = 'CinemaHashigoBot/0.1 (+https://cinema-web-st.yuta-develop-ct.workers.dev/bot)'
 
 interface SuggestStation {
   name?: string

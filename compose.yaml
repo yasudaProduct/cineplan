@@ -1,4 +1,4 @@
-# compose.yaml — ローカル開発の補助サービス群（docs/14 §2.1）。
+# compose.yaml — ローカル開発の補助サービス群（docs/spec/11 §2.1）。
 # DB本体は含まない（D1 は wrangler が SQLite で提供。ADR-0009）。
 # 必要なサービスだけ選択起動してよい: docker compose up -d transit-stub slack-stub
 services:

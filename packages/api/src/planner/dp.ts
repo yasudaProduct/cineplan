@@ -1,7 +1,7 @@
 import { compareScore } from '@cinema/shared'
 import type { Entry, PlanContext } from './types'
 
-// マストビットマスク付き DP（docs/12 §5 の参照実装。定式化は docs/05 §3）。
+// マストビットマスク付き DP（docs/spec/10 §5 の参照実装。定式化は docs/spec/05 §3）。
 // compareScore（shared）が唯一の比較基準。乱数・Map イテレーション順に依存しない。
 
 export const M_IN = 10 // 同一劇場内マージン（分・固定）
@@ -22,7 +22,7 @@ export function runDp(ctx: PlanContext): Entry[] {
     Array.from({ length: fullMask + 1 }, () => []),
   )
 
-  // 初期化: origin から間に合う各 i（初手 wait は常に 0 = 最遅出発。docs/12 §4）
+  // 初期化: origin から間に合う各 i（初手 wait は常に 0 = 最遅出発。docs/spec/10 §4）
   for (let i = 0; i < n; i++) {
     const c = ctx.cands[i]
     const oto = ctx.originToTheaterMin.get(c.theaterId)
@@ -42,7 +42,7 @@ export function runDp(ctx: PlanContext): Entry[] {
     const ci = ctx.cands[i]
     for (let j = i + 1; j < n; j++) {
       const cj = ctx.cands[j]
-      // 作品重複は k-best 段階で棄却（docs/05 §3 の妥協）。同一作品への即時遷移のみ早期スキップ
+      // 作品重複は k-best 段階で棄却（docs/spec/05 §3 の妥協）。同一作品への即時遷移のみ早期スキップ
       if (ci.movieId === cj.movieId) continue
       const m = ci.theaterId === cj.theaterId ? M_IN : ctx.arrivalMarginMin
       const tv = ctx.travel.between(ci.theaterId, cj.theaterId)

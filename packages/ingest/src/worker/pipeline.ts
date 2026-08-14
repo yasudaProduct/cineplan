@@ -6,8 +6,13 @@ import type { Env } from '../env'
 import { logError, logInfo } from '../log'
 import { assertComplianceGate } from './compliance-guard'
 import { TheaterNotFoundError } from './errors'
-import { extractTextWithRetries, extractVisionWithRetries } from './extract'
-import { fetchRenderedSchedule, fetchSchedule } from './fetch'
+import {
+  EXTRACTION_DEADLINE_MS,
+  extractTextDaySplit,
+  extractTextPerDocument,
+  extractVisionWithRetries,
+} from './extract'
+import { fetchRenderedSchedule, fetchSchedule, fetchScheduleByDateTemplate } from './fetch'
 import { normalize } from './normalize'
 import { sendSlack } from './notify'
 import { htmlToText, imagesToParts } from './preprocess'
@@ -23,15 +28,21 @@ export interface IngestResult {
   error?: string
 }
 
-// fetch_failed の Queues 標準リトライで通知を打ち切るまでの試行数（docs/06 §7）。
+// fetch_failed の Queues 標準リトライで通知を打ち切るまでの試行数（docs/spec/06 §7）。
 export const FETCH_FAILED_NOTIFY_AT_ATTEMPT = 3
+
+// run 全体（fetch + 抽出）の時間予算。Queue consumer の実行上限（約15分/起動）の内側に収める。
+// 複数日取得（ADR-0019）は fetch にも時間を使うため、抽出デッドラインを残時間から算出する。
+const RUN_BUDGET_MS = 12 * 60_000
+// fetch が長引いても抽出に最低限は確保する（下回ると1日も抽出できない）。
+const MIN_EXTRACTION_DEADLINE_MS = 3 * 60_000
 
 function todayJst(): string {
   return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10)
 }
 
-// 1劇場・1回分の取込（fetch→R2→抽出→検証→正規化→D1 洗い替え）。docs/06 パイプライン。
-// attempt: Queue 消費時点の配信試行回数（1始まり。docs/06 §7 の fetch_failed 通知タイミング判定に使用）。
+// 1劇場・1回分の取込（fetch→R2→抽出→検証→正規化→D1 洗い替え）。docs/spec/06 パイプライン。
+// attempt: Queue 消費時点の配信試行回数（1始まり。docs/spec/06 §7 の fetch_failed 通知タイミング判定に使用）。
 // 手動取込は Queue を経由しないため常に 1（＝失敗したら即通知）。
 export async function ingestTheater(
   env: Env,
@@ -41,7 +52,7 @@ export async function ingestTheater(
 ): Promise<IngestResult> {
   const theater = await getTheater(env.DB, theaterId)
   if (!theater) throw new TheaterNotFoundError(theaterId)
-  assertComplianceGate(theater, trigger) // 多層防御（docs/08 §0・§2）
+  assertComplianceGate(theater, trigger) // 多層防御（docs/spec/08 §0・§2）
 
   const businessDate = todayJst()
   const businessMonth = businessDate.slice(0, 7)
@@ -53,21 +64,39 @@ export async function ingestTheater(
     businessDate,
     fetchMethod: theater.fetchMethod,
     extractMethod: theater.extractMethod,
+    fetchDayMode: theater.fetchDayMode,
+    fetchDays: theater.fetchDays,
   })
 
-  // 1. Fetch（static=HTTP / rendered=Browser Rendering。docs/06 §2.0）。
+  // 1. Fetch（static=HTTP / rendered=Browser Rendering。docs/spec/06 §2.0）。
+  //    複数日取得（tabs / url_template。ADR-0019・docs/spec/06 §2.2）はここで日ごとの文書を集める。
   //    失敗時は Queue の再配信に委ねる（Worker 側で意図的な再取得はしない）。
-  //    Slack 通知は最終試行（attempt>=3）でのみ行う（毎回通知しない。docs/06 §7）。
+  //    Slack 通知は最終試行（attempt>=3）でのみ行う（毎回通知しない。docs/spec/06 §7）。
   const fetchStartedAt = Date.now()
+  // tabs はブラウザが必須（zod で担保済みだが、手書き SQL 対策に実行時も single へ縮退させる）
+  const dayMode =
+    theater.fetchDayMode === 'tabs' && theater.fetchMethod !== 'rendered'
+      ? 'single'
+      : theater.fetchDayMode
   let fetched: Awaited<ReturnType<typeof fetchSchedule>>
   try {
     fetched =
-      theater.fetchMethod === 'rendered'
-        ? await fetchRenderedSchedule(env.BROWSER, theater.scheduleUrl)
-        : await fetchSchedule({
+      dayMode === 'url_template'
+        ? await fetchScheduleByDateTemplate({
             scheduleUrl: theater.scheduleUrl,
-            extractMethod: theater.extractMethod,
+            businessDate,
+            days: theater.fetchDays,
           })
+        : theater.fetchMethod === 'rendered'
+          ? await fetchRenderedSchedule(env.BROWSER, theater.scheduleUrl, {
+              dayMode,
+              days: theater.fetchDays,
+              businessDate,
+            })
+          : await fetchSchedule({
+              scheduleUrl: theater.scheduleUrl,
+              extractMethod: theater.extractMethod,
+            })
   } catch (e) {
     logError('run.fetch.fail', e, { runId, theaterId, ms: Date.now() - fetchStartedAt })
     return await fail(
@@ -89,11 +118,17 @@ export async function ingestTheater(
     ms: Date.now() - fetchStartedAt,
     htmlChars: fetched.scheduleHtml.length,
     images: fetched.images.length,
+    days: fetched.days?.length ?? 1,
+    dayNotes: fetched.dayNotes?.length ?? 0,
   })
 
   // 2. R2 保存（再抽出は必ずこのスナップショットから。先方再取得はしない）
+  //    複数日取得は各日を _d{date}.html にも保存する（既定文書 .html は従来互換のため残す）
   const prefix = `raw/${theaterId}/${businessDate}/${fetched.fetchedAt}`
   await env.SNAPSHOTS.put(`${prefix}.html`, fetched.scheduleHtml)
+  for (const day of fetched.days ?? []) {
+    await env.SNAPSHOTS.put(`${prefix}_d${day.date}.html`, day.html)
+  }
   for (let i = 0; i < fetched.images.length; i++) {
     const img = fetched.images[i]
     if (!img) continue
@@ -115,21 +150,39 @@ export async function ingestTheater(
     )
   }
 
-  // 3〜4. 抽出（vision=画像 / text=htmlToText 済みテキスト。P4-7）+ zod 検証。
-  // LLM APIエラー/パース不能/zod NG は関数内でリトライ済み（docs/06 §7 のリトライ予算。
+  // 3〜4. 抽出（vision=画像1呼出 / text=日単位分割 ADR-0017 / 複数日文書 ADR-0019）+ zod 検証。
+  // LLM APIエラー/パース不能/zod NG は関数内でリトライ済み（docs/spec/06 §7 のリトライ予算。
   // fetch 済み入力の使い回しのみで再取得はしない）。
+  // 複数日取得は fetch に時間を使うため、run 全体の予算から残り時間を抽出デッドラインにする
+  // （Queue consumer の実行上限 約15分/起動 の内側に必ず収める。docs/spec/06 §7）。
   const extractStartedAt = Date.now()
+  const deadlineMs = Math.max(
+    MIN_EXTRACTION_DEADLINE_MS,
+    Math.min(EXTRACTION_DEADLINE_MS, RUN_BUDGET_MS - (Date.now() - fetchStartedAt)),
+  )
+  // 相対 URL 解決の基準は実際に取得した URL（{date} 展開後）を使う
+  const baseUrl = fetched.days?.[0]?.url ?? theater.scheduleUrl
   let outcome: Awaited<ReturnType<typeof extractVisionWithRetries>>
   try {
     outcome =
       theater.extractMethod === 'vision'
         ? await extractVisionWithRetries(env, imagesToParts(fetched.images), businessMonth)
-        : await extractTextWithRetries(
-            env,
-            htmlToText(fetched.scheduleHtml),
-            businessMonth,
-            theater.scheduleUrl,
-          )
+        : fetched.days && fetched.days.length > 0
+          ? await extractTextPerDocument(
+              env,
+              fetched.days.map((d) => ({ date: d.date, text: htmlToText(d.html), url: d.url })),
+              businessMonth,
+              businessDate,
+              { deadlineMs, extraNotes: fetched.dayNotes },
+            )
+          : await extractTextDaySplit(
+              env,
+              htmlToText(fetched.scheduleHtml),
+              businessMonth,
+              theater.scheduleUrl,
+              businessDate,
+              { deadlineMs },
+            )
   } catch (e) {
     logError('run.extract.fail', e, { runId, theaterId, ms: Date.now() - extractStartedAt })
     return await fail(
@@ -159,19 +212,19 @@ export async function ingestTheater(
   if (ng1) return await toReview(env, runId, theaterId, theater.name, result, ng1, prefix)
 
   // 6. 正規化 + V3/4
-  const pre = normalize(result, theater.scheduleUrl)
+  const pre = normalize(result, baseUrl)
   const ng2 = validateNormalized(pre)
   if (ng2) return await toReview(env, runId, theaterId, theater.name, result, ng2, prefix)
 
   // 7〜8. 通常書込パス（正規化→movie解決→洗い替え。承認/再抽出と同一関数・write.ts）。
-  //    coverageFloor=fetch 当日で stale データを防ぐ（docs/03 §7）。
+  //    coverageFloor=fetch 当日で stale データを防ぐ（docs/spec/03 §7）。
   const written = await normalizeResolveWrite(
     env.DB,
     theaterId,
     runId,
     result,
     businessDate,
-    theater.scheduleUrl,
+    baseUrl,
   )
   await completeRun(env.DB, runId, {
     snapshotKey: prefix,

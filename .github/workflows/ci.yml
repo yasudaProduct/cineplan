@@ -2,7 +2,7 @@ name: ci
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [develop]
 jobs:
   build-test:
     runs-on: ubuntu-latest
@@ -16,4 +16,4 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm lint
-      - run: pnpm test # DP 期待値テスト（docs/12 §7）を含む
+      - run: pnpm test # DP 期待値テスト（docs/spec/10 §7）を含む

@@ -1,9 +1,11 @@
 import type { Movie } from '@cinema/shared'
-import { useState } from 'react'
-import { addDaysJst, todayJst } from '../lib/time'
+import { useMemo, useState } from 'react'
+import { addDaysJst, formatDuration, todayJst } from '../lib/time'
 import type { FormState } from '../routes/plan'
+import { IconChevron, IconMapPin, IconSearch, IconStar } from './icons'
 
-// プラン作成フォーム（07 §1.3）。日付・時間帯・スタート/ゴール・詳細設定（マージン・作品選択）。
+// プラン作成フォーム（07 §1.3）。日付・時間帯・スタート/ゴール・観たい映画・詳細設定（マージン）。
+// 作品選択は詳細設定の外の常設セクション（07 §1.3。MoviePicker に分離）。
 
 interface Props {
   form: FormState
@@ -41,35 +43,6 @@ export function PlanForm({ form, setForm, movies, moviesLoading, submitting, onS
       () => setGeoBusy(false),
       { timeout: 10_000 },
     )
-  }
-
-  const toggleWish = (id: string) => {
-    setForm((cur) => {
-      const selected = cur.wishMovieIds.includes(id) || cur.mustMovieIds.includes(id)
-      if (selected) {
-        return {
-          ...cur,
-          wishMovieIds: cur.wishMovieIds.filter((x) => x !== id),
-          mustMovieIds: cur.mustMovieIds.filter((x) => x !== id),
-        }
-      }
-      return { ...cur, wishMovieIds: [...cur.wishMovieIds, id] }
-    })
-  }
-
-  // 星タップでマスト指定（最大3。F-03）
-  const toggleMust = (id: string) => {
-    setForm((cur) => {
-      if (cur.mustMovieIds.includes(id)) {
-        return { ...cur, mustMovieIds: cur.mustMovieIds.filter((x) => x !== id) }
-      }
-      if (cur.mustMovieIds.length >= 3) return cur
-      return {
-        ...cur,
-        mustMovieIds: [...cur.mustMovieIds, id],
-        wishMovieIds: cur.wishMovieIds.includes(id) ? cur.wishMovieIds : [...cur.wishMovieIds, id],
-      }
-    })
   }
 
   return (
@@ -144,10 +117,11 @@ export function PlanForm({ form, setForm, movies, moviesLoading, submitting, onS
           type="button"
           onClick={useGeolocation}
           disabled={geoBusy}
-          className={`rounded-md border px-3 py-2 text-sm ${form.originKind === 'geo' && form.originGeo ? 'border-neutral-900 bg-neutral-900 text-white' : 'border-neutral-300'}`}
+          className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm ${form.originKind === 'geo' && form.originGeo ? 'border-neutral-900 bg-neutral-900 text-white' : 'border-neutral-300'}`}
           title="現在地を使う"
         >
-          {geoBusy ? '取得中…' : '📍 現在地'}
+          <IconMapPin className="shrink-0" />
+          {geoBusy ? '取得中…' : '現在地'}
         </button>
       </div>
       {form.originKind === 'geo' && form.originGeo && (
@@ -179,74 +153,34 @@ export function PlanForm({ form, setForm, movies, moviesLoading, submitting, onS
         )}
       </div>
 
+      {/* 観たい映画（常設セクション。07 §1.3） */}
+      <MoviePicker form={form} setForm={setForm} movies={movies} moviesLoading={moviesLoading} />
+
       {/* 詳細設定（折りたたみ） */}
       <div className="border-t border-neutral-100 pt-3">
         <button
           type="button"
           onClick={() => setDetailOpen((v) => !v)}
-          className="text-sm text-neutral-600"
+          className="inline-flex items-center gap-1 text-sm text-neutral-600"
         >
-          {detailOpen ? '▾' : '▸'} 詳細設定
+          <IconChevron open={detailOpen} className="text-neutral-400" />
+          詳細設定
         </button>
         {detailOpen && (
-          <div className="mt-3 flex flex-col gap-4">
-            <div className="flex items-center gap-2">
-              <span className="w-28 shrink-0 text-sm font-semibold">到着マージン</span>
-              <select
-                value={form.arrivalMarginMin}
-                onChange={(e) => set('arrivalMarginMin', Number(e.target.value))}
-                className={inputCls}
-                aria-label="到着マージン"
-              >
-                {[5, 10, 15, 20, 30, 45, 60].map((m) => (
-                  <option key={m} value={m}>
-                    {m}分
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <p className="mb-2 text-sm font-semibold">
-                観たい映画を選ぶ（任意）
-                <span className="ml-2 font-normal text-neutral-500">
-                  未選択なら全作品が候補。★でマスト指定（最大3）
-                </span>
-              </p>
-              {moviesLoading && <p className="text-sm text-neutral-500">読み込み中…</p>}
-              {!moviesLoading && movies.length === 0 && (
-                <p className="text-sm text-neutral-500">この日の作品情報がありません</p>
-              )}
-              <div className="flex flex-wrap gap-2">
-                {movies.map((m) => {
-                  const selected =
-                    form.wishMovieIds.includes(m.id) || form.mustMovieIds.includes(m.id)
-                  const must = form.mustMovieIds.includes(m.id)
-                  return (
-                    <span
-                      key={m.id}
-                      className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm ${
-                        selected
-                          ? 'border-neutral-900 bg-neutral-900 text-white'
-                          : 'border-neutral-300 bg-white'
-                      }`}
-                    >
-                      <button type="button" onClick={() => toggleWish(m.id)}>
-                        {m.title}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => toggleMust(m.id)}
-                        title="マスト指定"
-                        aria-label={`${m.title} をマスト指定`}
-                        className={must ? 'text-amber-300' : 'opacity-50'}
-                      >
-                        {must ? '★' : '☆'}
-                      </button>
-                    </span>
-                  )
-                })}
-              </div>
-            </div>
+          <div className="mt-3 flex items-center gap-2">
+            <span className="w-28 shrink-0 text-sm font-semibold">到着マージン</span>
+            <select
+              value={form.arrivalMarginMin}
+              onChange={(e) => set('arrivalMarginMin', Number(e.target.value))}
+              className={inputCls}
+              aria-label="到着マージン"
+            >
+              {[5, 10, 15, 20, 30, 45, 60].map((m) => (
+                <option key={m} value={m}>
+                  {m}分
+                </option>
+              ))}
+            </select>
           </div>
         )}
       </div>
@@ -259,5 +193,199 @@ export function PlanForm({ form, setForm, movies, moviesLoading, submitting, onS
         {submitting ? '算出中…' : 'はしごプランを算出する'}
       </button>
     </form>
+  )
+}
+
+// ---- 観たい映画セクション ----
+
+const SEARCH_THRESHOLD = 8 // これ以上の作品数で絞り込み入力を出す（07 §1.3）
+
+interface PickerProps {
+  form: FormState
+  setForm: React.Dispatch<React.SetStateAction<FormState>>
+  movies: Movie[]
+  moviesLoading: boolean
+}
+
+function MoviePicker({ form, setForm, movies, moviesLoading }: PickerProps) {
+  const [query, setQuery] = useState('')
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return movies
+    return movies.filter((m) => m.title.toLowerCase().includes(q))
+  }, [movies, query])
+
+  const selectedCount = form.wishMovieIds.length
+  const mustCount = form.mustMovieIds.length
+  const mustFull = mustCount >= 3
+
+  // 行タップで候補（wish）指定を切替。解除時は must も外す
+  const toggleWish = (id: string) => {
+    setForm((cur) => {
+      const selected = cur.wishMovieIds.includes(id) || cur.mustMovieIds.includes(id)
+      if (selected) {
+        return {
+          ...cur,
+          wishMovieIds: cur.wishMovieIds.filter((x) => x !== id),
+          mustMovieIds: cur.mustMovieIds.filter((x) => x !== id),
+        }
+      }
+      return { ...cur, wishMovieIds: [...cur.wishMovieIds, id] }
+    })
+  }
+
+  // 「マスト」ボタンで must 指定（最大3。F-03）。must は wish を兼ねる
+  const toggleMust = (id: string) => {
+    setForm((cur) => {
+      if (cur.mustMovieIds.includes(id)) {
+        return { ...cur, mustMovieIds: cur.mustMovieIds.filter((x) => x !== id) }
+      }
+      if (cur.mustMovieIds.length >= 3) return cur
+      return {
+        ...cur,
+        mustMovieIds: [...cur.mustMovieIds, id],
+        wishMovieIds: cur.wishMovieIds.includes(id) ? cur.wishMovieIds : [...cur.wishMovieIds, id],
+      }
+    })
+  }
+
+  const clearAll = () => setForm((cur) => ({ ...cur, wishMovieIds: [], mustMovieIds: [] }))
+
+  return (
+    <div className="border-t border-neutral-100 pt-3">
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <p className="text-sm font-semibold">
+          観たい映画
+          <span className="ml-1.5 font-normal text-neutral-400">任意</span>
+        </p>
+        {selectedCount > 0 ? (
+          <p className="flex items-center gap-2 text-xs text-neutral-600">
+            <span>
+              {selectedCount}作品を候補に指定
+              {mustCount > 0 && `（マスト ${mustCount}/3）`}
+            </span>
+            <button
+              type="button"
+              onClick={clearAll}
+              className="text-neutral-500 underline hover:text-neutral-700"
+            >
+              選択解除
+            </button>
+          </p>
+        ) : (
+          <p className="text-xs text-neutral-500">未選択なら全作品から自動で選びます</p>
+        )}
+      </div>
+
+      {moviesLoading && (
+        <div className="flex flex-col gap-1.5" role="status" aria-label="作品を読み込み中">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-10 animate-pulse rounded-md bg-neutral-100" />
+          ))}
+        </div>
+      )}
+      {!moviesLoading && movies.length === 0 && (
+        <p className="rounded-md border border-dashed border-neutral-300 px-3 py-4 text-center text-sm text-neutral-500">
+          この日の作品情報がありません
+        </p>
+      )}
+
+      {!moviesLoading && movies.length > 0 && (
+        <>
+          {movies.length > SEARCH_THRESHOLD && (
+            <div className="relative mb-2">
+              <IconSearch className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-neutral-400" />
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="作品名で絞り込み"
+                aria-label="作品名で絞り込み"
+                className="w-full rounded-md border border-neutral-300 bg-white py-2 pr-3 pl-9 text-sm focus:border-neutral-500 focus:outline-none"
+              />
+            </div>
+          )}
+
+          <ul className="max-h-72 divide-y divide-neutral-100 overflow-y-auto rounded-md border border-neutral-200">
+            {filtered.map((m) => {
+              const must = form.mustMovieIds.includes(m.id)
+              const selected = form.wishMovieIds.includes(m.id) || must
+              return (
+                <li key={m.id} className={`flex items-stretch ${selected ? 'bg-neutral-50' : ''}`}>
+                  <button
+                    type="button"
+                    onClick={() => toggleWish(m.id)}
+                    aria-pressed={selected}
+                    className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`flex size-5 shrink-0 items-center justify-center rounded border text-white ${
+                        selected
+                          ? 'border-neutral-900 bg-neutral-900'
+                          : 'border-neutral-300 bg-white'
+                      }`}
+                    >
+                      {selected && <CheckMark />}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">{m.title}</span>
+                      {m.runtimeMin != null && (
+                        <span className="block text-xs text-neutral-500">
+                          {formatDuration(m.runtimeMin)}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleMust(m.id)}
+                    disabled={!must && mustFull}
+                    aria-pressed={must}
+                    aria-label={`${m.title} をマスト指定`}
+                    title={!must && mustFull ? 'マストは最大3作品です' : '必ず観る作品として指定'}
+                    className={`my-2 mr-3 inline-flex shrink-0 items-center gap-1 self-center rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                      must
+                        ? 'border-amber-500 bg-amber-500 text-white'
+                        : 'border-neutral-300 bg-white text-neutral-500 hover:border-amber-400 hover:text-amber-600 disabled:opacity-40 disabled:hover:border-neutral-300 disabled:hover:text-neutral-500'
+                    }`}
+                  >
+                    <IconStar filled={must} strokeWidth={must ? 0 : 2} />
+                    マスト
+                  </button>
+                </li>
+              )
+            })}
+            {filtered.length === 0 && (
+              <li className="px-3 py-4 text-center text-sm text-neutral-500">
+                「{query}」に一致する作品はありません
+              </li>
+            )}
+          </ul>
+          <p className="mt-1.5 text-xs text-neutral-400">
+            行をタップで候補に指定。「マスト」は必ず組み込む作品（最大3）
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
+
+function CheckMark() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="0.75em"
+      height="0.75em"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={3.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
   )
 }

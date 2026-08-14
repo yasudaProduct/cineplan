@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { htmlToText } from '../preprocess'
 
-// ノイズ除去（feat/gemini-timeout-noise-reduction・docs/09 P4-8 追記④）。
+// ノイズ除去（feat/gemini-timeout-noise-reduction・docs/plan/01 P4-8 追記④）。
 // 大阪ステーションシネマ（rendered/text）で Gemini 抽出が 120秒×3 回タイムアウトした調査から、
 // header/footer/nav/meta/link/img/空の figure・iframe がスケジュールと無関係なまま
 // LLM 入力に含まれていたことが判明。安全に除去できると実データで検証した範囲のみ実装する。

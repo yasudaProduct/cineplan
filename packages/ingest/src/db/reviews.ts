@@ -1,7 +1,7 @@
 import { ExtractionResult, newId } from '@cinema/shared'
 import { normalizeResolveWrite } from '../worker/write'
 
-// 検証NG（validation_failed）時にレビューキューへ登録（docs/03 §3.5 / docs/06 §5）。
+// 検証NG（validation_failed）時にレビューキューへ登録（docs/spec/03 §3.5 / docs/spec/06 §5）。
 // payloadJson は抽出結果全体。承認時にこれを通常の書込パスで screenings へ反映する。
 export async function createReview(
   db: D1Database,
@@ -31,12 +31,15 @@ export async function recentAvgCount(
     )
     .bind(theaterId)
     .all<{ c: number }>()
-  if (results.length < 3) return undefined
+  // 履歴下限は 2 件（ADR-0020 で 3→2）。シネ・ヌーヴォの成功 run が2件しか無い状態で
+  // 22件へ激減した run が V2 を素通りし、洗い替えで6日分を失う事故が起きたため。
+  // 2件でも平均としての意味はあり、50〜200% の窓は十分ゆるい。
+  if (results.length < 2) return undefined
   const sum = results.reduce((a, r) => a + r.c, 0)
   return sum / results.length
 }
 
-// ---- レビューキュー（P4-5。docs/07 §2.5・docs/11 §6）----
+// ---- レビューキュー（P4-5。docs/spec/07 §2.5・docs/spec/09 §6）----
 
 const nowIso = (): string => new Date().toISOString()
 
@@ -92,7 +95,7 @@ export async function getReview(db: D1Database, id: string): Promise<ReviewDetai
     .first<ReviewDetail>()
 }
 
-// 破棄（rejected）。理由メモ必須（docs/07 §2.5。必須検証は route 側）。
+// 破棄（rejected）。理由メモ必須（docs/spec/07 §2.5。必須検証は route 側）。
 export async function rejectReview(db: D1Database, id: string, note: string): Promise<boolean> {
   const res = await db
     .prepare(
@@ -112,7 +115,7 @@ export class ReviewNotPendingError extends Error {
 }
 
 // 承認（approved）: payload を通常書込パス（normalizeResolveWrite = pipeline と同一関数）で
-// D1 に反映し、run を succeeded に更新する（docs/11 §6・docs/09 P4-5）。
+// D1 に反映し、run を succeeded に更新する（docs/spec/09 §6・docs/plan/01 P4-5）。
 // coverageFloor は payload.businessDate（そのデータの取込日）。承認が数日後でも、抽出が
 // カバーしない日を洗い替え範囲に入れないため today は使わない。
 export async function approveReview(

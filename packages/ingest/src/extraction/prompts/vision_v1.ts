@@ -1,4 +1,4 @@
-// 画像スケジュール抽出プロンプト v1（ADR-0012・docs/06 §4）。
+// 画像スケジュール抽出プロンプト v1（ADR-0012・docs/spec/06 §4）。
 // 既存版は変更せず、修正は新版追加。ingest_runs.prompt_version に 'vision_v1' を記録する。
 
 export const VISION_V1_VERSION = 'vision_v1'

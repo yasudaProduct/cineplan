@@ -2,9 +2,9 @@ import type { TheaterRecord } from '@cinema/shared'
 import type { RunRow } from '../../db/ingest-runs'
 import { Flash, jst, StatusChip, TheaterStatusChip } from '../components'
 
-// 劇場マスタ（docs/07 §2.3）。新規は必ず paused 起票・active 昇格はサーバ側ゲート。
+// 劇場マスタ（docs/spec/07 §2.3）。新規は必ず paused 起票・active 昇格はサーバ側ゲート。
 
-const TERMS_WARN_MS = 90 * 86_400_000 // docs/08 §2
+const TERMS_WARN_MS = 90 * 86_400_000 // docs/spec/08 §2
 
 function termsCell(termsCheckedAt: string | null) {
   if (!termsCheckedAt) return <span class="warn-text">未確認</span>
@@ -52,6 +52,12 @@ export function TheaterListPage(props: {
                 </td>
                 <td>
                   {t.fetchMethod}/{t.extractMethod}
+                  {t.fetchDayMode !== 'single' && (
+                    <span class="small">
+                      {' '}
+                      {t.fetchDayMode}×{t.fetchDays === 0 ? '全' : t.fetchDays}
+                    </span>
+                  )}
                 </td>
                 <td>
                   {last ? (
@@ -153,8 +159,35 @@ function UpsertFields({ t }: { t?: TheaterRecord }) {
           </option>
         </select>
       </div>
+      <label for="f-fetchDayMode">
+        fetchDayMode / fetchDays（複数日取得。ADR-0019・docs/spec/08 §3）
+      </label>
+      <div style="display:flex; gap:8px; max-width:560px">
+        <select id="f-fetchDayMode" name="fetchDayMode">
+          {(['single', 'tabs', 'url_template'] as const).map((v) => (
+            <option value={v} selected={(t?.fetchDayMode ?? 'single') === v}>
+              {v}
+            </option>
+          ))}
+        </select>
+        <input
+          type="number"
+          name="fetchDays"
+          required
+          min="0"
+          max="10"
+          value={t ? String(t.fetchDays) : '1'}
+          aria-label="fetchDays"
+        />
+      </div>
+      <p class="small">
+        single=1ページ（既定）/ tabs=日付タブを順にクリック（fetchMethod=rendered 必須）/
+        url_template=scheduleUrl の {'{date}'} を置換（fetchMethod=static）。fetchDays:
+        0=検出タブ全件（tabs のみ）・上限10。1回の取込で最大 1+fetchDays 回先方へアクセスする
+        （5秒間隔・直列）。
+      </p>
       <label for="f-robotsStatus">
-        robotsStatus（人間が robots.txt を確認して選ぶ。docs/16 §2.2）
+        robotsStatus（人間が robots.txt を確認して選ぶ。docs/guides/01 §2.2）
       </label>
       <select id="f-robotsStatus" name="robotsStatus">
         {(['unknown', 'allowed', 'disallowed'] as const).map((v) => (
@@ -184,7 +217,7 @@ export function TheaterNewPage({ err }: { err?: string }) {
       <h1>新規劇場（paused で起票）</h1>
       <Flash err={err} />
       <p class="small">
-        採用プロセス（docs/08 §2・docs/16 §2.2）:
+        採用プロセス（docs/spec/08 §2・docs/guides/01 §2.2）:
         robots/規約の確認は人間が行い、結果をここに記録する。 登録後は 手動取込 → レビュー全件目視 →
         3日連続 succeeded → active 昇格。
       </p>
@@ -252,8 +285,8 @@ export function TheaterEditPage(props: {
           <h2>ステータス変更</h2>
           <p class="small">
             active 昇格の条件: robots_status=allowed かつ terms_checked_at
-            記入済み（サーバ側で強制。docs/08 §0 ルール5）。3日連続 succeeded（現在 <b>{streak}</b>{' '}
-            連続）を確認してから昇格すること（docs/06 §9）。
+            記入済み（サーバ側で強制。docs/spec/08 §0 ルール5）。3日連続 succeeded（現在{' '}
+            <b>{streak}</b> 連続）を確認してから昇格すること（docs/spec/06 §9）。
           </p>
           <form method="post" action={`/admin/theaters/${t.id}/status`}>
             <select name="status">
@@ -270,12 +303,20 @@ export function TheaterEditPage(props: {
 
           <h2>手動取込（F-33）</h2>
           {props.isProd ? (
-            <p class="small">prod は cron のみ（手動取込は無効。docs/14 §3.2）。</p>
+            <p class="small">prod は cron のみ（手動取込は無効。docs/spec/11 §3.2）。</p>
           ) : (
             <form method="post" action={`/admin/theaters/${t.id}/ingest`}>
+              {t.fetchDayMode !== 'single' && (
+                <p class="small">
+                  この劇場は複数日取得（{t.fetchDayMode}）のため、1回の取込で最大{' '}
+                  {1 + (t.fetchDays === 0 ? 10 : t.fetchDays)}{' '}
+                  回先方サイトへアクセスします（5秒間隔・直列。docs/spec/08 §3・ADR-0019）。
+                </p>
+              )}
               {props.todayFetches > 0 && (
                 <p class="small warn-text">
-                  ⚠ 本日すでに {props.todayFetches} 回取得済み。同一サイト1日1回（docs/08
+                  ⚠ 本日すでに {props.todayFetches}{' '}
+                  回取得済み。同一サイト1日1セッション（docs/spec/08
                   §3）を破る2回目の取得は人間の明示判断が必要:
                   <br />
                   <label style="display:inline; font-weight:400">

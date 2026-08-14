@@ -23,7 +23,7 @@ describe('time（JST 表示）', () => {
     expect(jstTime('2026-07-15T01:00:00.000Z')).toBe('10:00')
     expect(jstTime('2026-07-15T16:10:00.000Z')).toBe('01:10') // 深夜（翌1:10 JST）
   })
-  it('終電バッジは JST 23時以降の終了で立つ（docs/05 §5）', () => {
+  it('終電バッジは JST 23時以降の終了で立つ（docs/spec/05 §5）', () => {
     expect(isLateNight('2026-07-15T14:30:00.000Z')).toBe(true) // 23:30 JST
     expect(isLateNight('2026-07-15T13:00:00.000Z')).toBe(false) // 22:00 JST
   })

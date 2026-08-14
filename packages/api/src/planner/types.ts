@@ -1,6 +1,6 @@
 import type { Score } from '@cinema/shared'
 
-// planner 内部型（docs/12 §2）。分単位・UTC エポック分で計算し、ISO 変換は build.ts のみ。
+// planner 内部型（docs/spec/10 §2）。分単位・UTC エポック分で計算し、ISO 変換は build.ts のみ。
 
 export interface Candidate {
   screeningId: string

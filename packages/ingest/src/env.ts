@@ -15,6 +15,9 @@ export interface Env extends LlmEnv {
   // 経路探索 API（ls8h Transit API。ADR-0014）。省略時は実 API。スタブ検証時のみ上書き。
   TRANSIT_API_BASE?: string
   // POST /admin/ingest の保護用共有シークレット。APP_ENV!=='local' では必須（未設定は fail closed）。
-  // docs/16 §3.6・docs/09 P4-0。
+  // docs/guides/01 §3.6・docs/plan/01 P4-0。
   ADMIN_TOKEN?: string
+  // LLM コスト急増アラートの日次 in-tokens 閾値（P5-6・docs/spec/06 §8）。
+  // 未設定は既定 5,000,000（cost-alert.ts）。上書きは wrangler var で。
+  COST_ALERT_DAILY_IN_TOKENS?: string
 }

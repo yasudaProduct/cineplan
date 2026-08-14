@@ -1,5 +1,5 @@
 # .dev.vars.example — このファイルをコピーして .dev.vars を作成し、実値を記入する。
-# .dev.vars は gitignore 対象（コミット禁止）。詳細は docs/16_human-setup-guide.md §2。
+# .dev.vars は gitignore 対象（コミット禁止）。詳細は docs/guides/01_human-setup-guide.md §2。
 APP_ENV=local
 
 # LLM 抽出（P1 で使用。ADR-0011）。開発は既定 Ollama（ローカル・無料・オフライン）。
@@ -23,5 +23,5 @@ SLACK_WEBHOOK_URL=http://localhost:1081/webhook
 
 # POST /admin/ingest の保護用トークン。APP_ENV=local では未使用（認証スキップ）。
 # ST/prod（APP_ENV!=='local'）は必須。未設定のまま st にデプロイすると 401（fail closed）。
-# ST への投入は wrangler secret put ADMIN_TOKEN --env st（docs/16 §3.6）。
+# ST への投入は wrangler secret put ADMIN_TOKEN --env st（docs/guides/01 §3.6）。
 # ADMIN_TOKEN=xxxxxxxx

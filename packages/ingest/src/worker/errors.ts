@@ -10,7 +10,7 @@ export class TheaterNotFoundError extends Error {
 }
 
 // robots/規約確認未完了、または cron 消費時点で status が active でなくなっている場合
-// （停止依頼等）。docs/08 §0・§2 の多層防御。
+// （停止依頼等）。docs/spec/08 §0・§2 の多層防御。
 export class ComplianceGateError extends Error {
   constructor(message: string) {
     super(message)

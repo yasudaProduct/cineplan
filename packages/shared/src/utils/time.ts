@@ -1,4 +1,4 @@
-// 時刻ユーティリティ（docs/11 §3, §4.2）。
+// 時刻ユーティリティ（docs/spec/09 §3, §4.2）。
 // 内部保存は UTC ISO 文字列（Z 付き）。business_date のみ JST の YYYY-MM-DD 文字列。
 
 // JST 実時刻 → business_date（05:00 JST 未満は前日扱い = 興行日）
@@ -24,7 +24,7 @@ export function normalizeStart(businessDate: string, hhmm: string): string {
   return jst.toISOString()
 }
 
-// タイトル名寄せキー（docs/03 §6 / docs/06 §6）。全半角統一→記号/空白除去→小文字化。
+// タイトル名寄せキー（docs/spec/03 §6 / docs/spec/06 §6）。全半角統一→記号/空白除去→小文字化。
 export function titleKey(t: string): string {
   return t
     .normalize('NFKC')

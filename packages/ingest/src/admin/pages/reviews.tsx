@@ -2,7 +2,7 @@ import { ExtractionResult } from '@cinema/shared'
 import type { ReviewDetail, ReviewListItem } from '../../db/reviews'
 import { Flash, jst, StatusChip } from '../components'
 
-// レビューキュー（docs/07 §2.5）。左に抽出結果・右にスナップショット画像で突合し、
+// レビューキュー（docs/spec/07 §2.5）。左に抽出結果・右にスナップショット画像で突合し、
 // 承認（通常書込パスで反映）/ 破棄（メモ必須）/ プロンプト再実行。
 
 export function ReviewListPage(props: {
@@ -170,7 +170,7 @@ export function ReviewDetailPage(props: {
               </div>
             </form>
             <form method="post" action={`/admin/reviews/${v.id}/reject`}>
-              <label for="reject-note">破棄理由（必須。docs/07 §2.5）</label>
+              <label for="reject-note">破棄理由（必須。docs/spec/07 §2.5）</label>
               <input
                 id="reject-note"
                 type="text"

@@ -1,6 +1,6 @@
 import type { Movie } from '@cinema/shared'
 
-// 対象日に上映がある作品一覧（docs/11 §5.2）。
+// 対象日に上映がある作品一覧（docs/spec/09 §5.2）。
 // 原則1（内部利用限定）: 作品の存在のみ返し、上映時刻・劇場別内訳は返さない。
 export async function listMoviesByDate(db: D1Database, businessDate: string): Promise<Movie[]> {
   const { results } = await db

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// レビュー承認/破棄（P4-5。docs/11 §6）。承認は通常書込パス（normalizeResolveWrite）を
+// レビュー承認/破棄（P4-5。docs/spec/09 §6）。承認は通常書込パス（normalizeResolveWrite）を
 // payload.businessDate を coverageFloor として呼び、review→approved / run→succeeded を
 // 1バッチで更新する。破棄はメモ必須（必須検証は route 側・ここでは更新の有無を返す）。
 
@@ -63,7 +63,7 @@ describe('approveReview', () => {
     const r = await approveReview(db, 'rev_1', 'メモ')
     expect(r).toEqual({ written: 5, runId: 'run_1' })
     // coverageFloor は payload.businessDate（today ではない）。scheduleUrl は detailPath
-    // 絶対化の基準（docs/06 §6.4。review指摘の回帰）としてレビューの theater から渡る。
+    // 絶対化の基準（docs/spec/06 §6.4。review指摘の回帰）としてレビューの theater から渡る。
     expect(writeMock).toHaveBeenCalledWith(
       db,
       'thr_a',

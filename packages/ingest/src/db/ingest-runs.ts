@@ -95,7 +95,7 @@ export async function failRun(
     .run()
 }
 
-// ---- 管理サイト用読取（P4-2/P4-4。docs/07 §2.2・§2.4）----
+// ---- 管理サイト用読取（P4-2/P4-4。docs/spec/07 §2.2・§2.4）----
 
 // D1 行そのまま（snake_case）。管理画面表示用。
 export interface RunRow {
@@ -148,7 +148,7 @@ export async function listRuns(db: D1Database, f: ListRunsFilter = {}): Promise<
   return results
 }
 
-// 劇場ごとの直近 run（新しい順）。active 昇格判断の連続 succeeded 表示に使う（docs/06 §9）。
+// 劇場ごとの直近 run（新しい順）。active 昇格判断の連続 succeeded 表示に使う（docs/spec/06 §9）。
 export async function recentRunsForTheater(
   db: D1Database,
   theaterId: string,
@@ -165,7 +165,7 @@ export async function recentRunsForTheater(
 }
 
 // 本日（JST）に先方サイトへアクセスした run 数（trigger=cron/manual。retry は R2 のみで数えない）。
-// 手動取込ボタンの「1日1回」ガードに使う（docs/08 §3。2回目は人間の明示チェックが必要）。
+// 手動取込ボタンの「1日1回」ガードに使う（docs/spec/08 §3。2回目は人間の明示チェックが必要）。
 export async function countTodaySiteFetches(
   db: D1Database,
   theaterId: string,
@@ -181,13 +181,13 @@ export async function countTodaySiteFetches(
   return row?.c ?? 0
 }
 
-// 孤児run の掃除（fix/p4-manual-ingest-orphan・docs/06 §7）。ブラウザ接続断などで
+// 孤児run の掃除（fix/p4-manual-ingest-orphan・docs/spec/06 §7）。ブラウザ接続断などで
 // Workers の実行がキャンセルされ、queued/fetching/extracting のまま更新が止まった run を
 // extraction_failed に確定する。/admin ダッシュボード読込時に呼ばれる（新規 Cron は追加しない）。
-// Gemini抽出の最悪ケース（1回120秒 × 最大4回=リトライ予算 LLM_API_MAX_RETRIES(2)+
-// MALFORMED_OUTPUT_MAX_RETRIES(1) の worst-case interleaving ≈ 8分。extract.ts）
-// + rendered fetch のブラウザ起動分に十分な余裕を持たせた値。
-const STALE_RUN_MINUTES = 20
+// text 日分割（ADR-0017）の正常上限 = 抽出デッドライン EXTRACTION_DEADLINE_MS(10分)
+// + 呼出中の超過猶予(最大120秒) + rendered fetch のブラウザ起動分。started_at 起点の
+// 判定のため、実行中の正当な run を誤って打ち切らないよう余裕を持たせた値。
+const STALE_RUN_MINUTES = 30
 
 // 戻り値は掃除した run の id 一覧（呼び出し側で reap.done ログに載せ、Workers Logs から
 // 「いつ・どの run が孤児として確定されたか」を追跡できるようにする）。

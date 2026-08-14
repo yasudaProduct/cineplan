@@ -62,9 +62,9 @@ describe('normalize', () => {
 
   // review指摘: テアトル梅田で /ttcg_umeda/movie/xxx.html のような相対 detailPath が
   // そのまま D1 に保存され、Plan の ScreeningLeg.officialUrl（z.string().url() 必須）
-  // が invalid_string で落ちていた。docs/06 §6.4「相対URLは scheduleUrl 基準で絶対化」が
+  // が invalid_string で落ちていた。docs/spec/06 §6.4「相対URLは scheduleUrl 基準で絶対化」が
   // 未実装だったことが原因。
-  describe('detailUrl（相対URLの絶対化。docs/06 §6.4）', () => {
+  describe('detailUrl（相対URLの絶対化。docs/spec/06 §6.4）', () => {
     it('相対パスは scheduleUrl 基準で絶対化する', () => {
       const [row] = normalize(
         result([
@@ -185,6 +185,142 @@ describe('validateNormalized (V3/V4)', () => {
       SCHEDULE_URL,
     )
     expect(validateNormalized(rows)).toBeNull()
+  })
+})
+
+// V7（ADR-0020）。2026-07-26 にシネ・ヌーヴォで、月間グリッド画像（7/25〜8/28）の全日程が
+// 単一日 2026-08-01 に潰れた抽出結果が V1〜V6 を素通りして書き込まれ、洗い替えで
+// 7/26〜7/31 の6日分を失った。V7 は書込前に走るこの class の主防御。
+describe('validateNormalized (V7 SCREEN_TIME_OVERLAP)', () => {
+  const D = '2026-07-11'
+  const X = 'シネ・ヌーヴォX'
+
+  it('同一スクリーンで時間帯が重複したら NG（事故時の実データ形状）', () => {
+    // 実際に書き込まれた行: 01:10〜02:35 と 01:20〜03:00 が同一スクリーンで重複していた
+    const rows = normalize(
+      result([
+        sc({
+          date: D,
+          screenName: X,
+          movieTitle: '少女シェット',
+          startTime: '10:10',
+          endTime: '11:35',
+        }),
+        sc({
+          date: D,
+          screenName: X,
+          movieTitle: 'LOST LAND',
+          startTime: '10:20',
+          endTime: '12:00',
+        }),
+      ]),
+      SCHEDULE_URL,
+    )
+    expect(validateNormalized(rows)?.code).toBe('SCREEN_TIME_OVERLAP')
+  })
+
+  it('同一スクリーンで別作品の開始時刻が完全一致したら NG（終了時刻が推定でも）', () => {
+    const rows = normalize(
+      result([
+        sc({ date: D, screenName: X, movieTitle: '霧のごとく', startTime: '10:30' }),
+        sc({ date: D, screenName: X, movieTitle: '野火', startTime: '10:30' }),
+      ]),
+      SCHEDULE_URL,
+    )
+    expect(validateNormalized(rows)?.code).toBe('SCREEN_TIME_OVERLAP')
+  })
+
+  it('別スクリーンなら同時刻でも通過（多スクリーン館の並行上映は正常）', () => {
+    const rows = normalize(
+      result([
+        sc({
+          date: D,
+          screenName: 'シネマ1',
+          movieTitle: 'A',
+          startTime: '10:30',
+          endTime: '12:30',
+        }),
+        sc({
+          date: D,
+          screenName: 'シネマ2',
+          movieTitle: 'B',
+          startTime: '10:30',
+          endTime: '12:30',
+        }),
+      ]),
+      SCHEDULE_URL,
+    )
+    expect(validateNormalized(rows)).toBeNull()
+  })
+
+  it('別日なら同一スクリーン・同時刻でも通過（日付ごとに独立して判定する）', () => {
+    const rows = normalize(
+      result([
+        sc({
+          date: '2026-07-11',
+          screenName: X,
+          movieTitle: 'A',
+          startTime: '10:30',
+          endTime: '12:30',
+        }),
+        sc({
+          date: '2026-07-12',
+          screenName: X,
+          movieTitle: 'A',
+          startTime: '10:30',
+          endTime: '12:30',
+        }),
+      ]),
+      SCHEDULE_URL,
+    )
+    expect(validateNormalized(rows)).toBeNull()
+  })
+
+  it('screenName 無しの劇場はスキップ（大阪ステーションシネマは355件すべて空。全件重複扱いになるのを防ぐ）', () => {
+    const rows = normalize(
+      result([
+        sc({ date: D, movieTitle: 'A', startTime: '10:30', endTime: '12:30' }),
+        sc({ date: D, movieTitle: 'B', startTime: '10:30', endTime: '12:30' }),
+        sc({ date: D, movieTitle: 'C', startTime: '11:00', endTime: '13:00' }),
+      ]),
+      SCHEDULE_URL,
+    )
+    expect(validateNormalized(rows)).toBeNull()
+  })
+
+  it('終了時刻が推定のみの隣接上映は重複扱いしない（推定尺での誤検知を避ける）', () => {
+    // endTime 無し → 推定120分。10:30 の推定終了 12:30 は 11:00 開始と重なるが NG にしない
+    const rows = normalize(
+      result([
+        sc({ date: D, screenName: X, movieTitle: 'A', startTime: '10:30' }),
+        sc({ date: D, screenName: X, movieTitle: 'B', startTime: '11:00' }),
+      ]),
+      SCHEDULE_URL,
+    )
+    expect(validateNormalized(rows)).toBeNull()
+  })
+
+  it('同一スクリーンの連続上映（前の終了 <= 次の開始）は通過', () => {
+    const rows = normalize(
+      result([
+        sc({ date: D, screenName: X, movieTitle: 'A', startTime: '10:30', endTime: '12:20' }),
+        sc({ date: D, screenName: X, movieTitle: 'B', startTime: '12:30', endTime: '14:15' }),
+        sc({ date: D, screenName: X, movieTitle: 'C', startTime: '14:30', endTime: '16:10' }),
+      ]),
+      SCHEDULE_URL,
+    )
+    expect(validateNormalized(rows)).toBeNull()
+  })
+
+  it('入力順が時刻順でなくても検出する（startAt 昇順に並べ替えて隣接比較する）', () => {
+    const rows = normalize(
+      result([
+        sc({ date: D, screenName: X, movieTitle: 'B', startTime: '10:20', endTime: '12:00' }),
+        sc({ date: D, screenName: X, movieTitle: 'A', startTime: '10:10', endTime: '11:35' }),
+      ]),
+      SCHEDULE_URL,
+    )
+    expect(validateNormalized(rows)?.code).toBe('SCREEN_TIME_OVERLAP')
   })
 })
 

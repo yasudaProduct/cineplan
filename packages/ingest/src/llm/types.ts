@@ -7,10 +7,16 @@ export interface ImagePart {
   dataBase64: string // base64（data: プレフィックス無し）
 }
 
+// 構造化出力のスキーマ種別（ADR-0017）。スキーマ実体はプロバイダごとの表現差
+// （Gemini=大文字型 / Ollama=JSON Schema）があるため各クライアント内に持つ。
+// extraction: ExtractionResult / dateList: ExtractedDateList（text 日分割の日付発見コール）
+export type ResponseFormat = 'extraction' | 'dateList'
+
 export interface ExtractInput {
   systemPrompt: string
   userText?: string // text 抽出（前処理済み HTML）
   images?: ImagePart[] // vision 抽出（スケジュール画像）
+  responseFormat?: ResponseFormat // 省略時 'extraction'
 }
 
 export interface LlmResult {

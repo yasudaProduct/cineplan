@@ -10,7 +10,7 @@ import {
 // 開発専用（ADR-0011）。/api/chat・format=JSONスキーマ（構造化出力）。vision は message.images に base64。
 // 品質確定は本番プロバイダ（Gemini）で行うこと（「Ollama で通った ≠ Gemini で通る」）。
 
-// ExtractionResult 対応の JSON Schema（docs/06 §3）。Gemini の responseSchema と同等の担保を
+// ExtractionResult 対応の JSON Schema（docs/spec/06 §3）。Gemini の responseSchema と同等の担保を
 // Ollama にも与える（format='json' だけでは businessDate 欠落等のスキーマ逸脱が起きる）。
 // regex（date/startTime 等）は zod 側（validate）で検証する。
 const FORMAT_SCHEMA = {
@@ -38,6 +38,16 @@ const FORMAT_SCHEMA = {
   required: ['businessDate', 'screenings'],
 }
 
+// ExtractedDateList 対応（text 日分割の日付発見コール。docs/spec/06 §4 text_v2・ADR-0017）。
+const DATE_LIST_FORMAT_SCHEMA = {
+  type: 'object',
+  properties: {
+    dates: { type: 'array', items: { type: 'string' } },
+    notes: { type: ['string', 'null'] },
+  },
+  required: ['dates'],
+}
+
 interface OllamaChatResponse {
   message?: { content?: string }
   prompt_eval_count?: number
@@ -59,7 +69,7 @@ export function createOllamaClient(opts: { baseUrl: string; model: string }): Ll
       const body = {
         model: opts.model,
         messages: [{ role: 'system', content: input.systemPrompt }, userMsg],
-        format: FORMAT_SCHEMA,
+        format: input.responseFormat === 'dateList' ? DATE_LIST_FORMAT_SCHEMA : FORMAT_SCHEMA,
         stream: false,
         options: { temperature: 0 },
       }

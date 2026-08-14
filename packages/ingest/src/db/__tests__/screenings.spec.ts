@@ -119,7 +119,7 @@ describe('replaceScreeningsByDate — stale データ防止（review指摘#3の�
   })
 })
 
-describe('pickDefaultDate — 上映データ画面の既定表示日（docs/07 §2.6）', () => {
+describe('pickDefaultDate — 上映データ画面の既定表示日（docs/spec/07 §2.6）', () => {
   it('今日のデータがあれば今日', () => {
     expect(pickDefaultDate(['2026-07-19', '2026-07-20', '2026-07-21'], '2026-07-20')).toBe(
       '2026-07-20',

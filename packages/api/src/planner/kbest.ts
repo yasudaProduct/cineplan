@@ -1,7 +1,7 @@
 import { compareScore, type PlanLabel } from '@cinema/shared'
 import type { Candidate, Entry } from './types'
 
-// k-best 解プールからの代替案選抜（docs/12 §6 / docs/05 §6）。
+// k-best 解プールからの代替案選抜（docs/spec/10 §6 / docs/spec/05 §6）。
 // 作品重複を含む解はここで棄却する（ADR-0006 の妥協。DP 状態では管理しない）。
 
 export interface LabeledPlan {
@@ -16,7 +16,7 @@ export function selectPlans(
   if (solutions.length === 0) return []
   const { cands, maxResults } = opts
 
-  // 重複判定は「theater 列 + movie 集合」の完全一致（docs/05 §6）。
+  // 重複判定は「theater 列 + movie 集合」の完全一致（docs/spec/05 §6）。
   // path（screening index 列）一致の近似だと、同一構成で上映回だけ異なる Plan が
   // 重複として弾かれず複数返ってしまう。
   const sig = (e: Entry): string => {
@@ -34,7 +34,7 @@ export function selectPlans(
   const valid = sorted.filter((e) => !hasDupMovie(e))
   if (valid.length === 0) return []
 
-  // most_movies すら棄却された場合は次善の valid 解が自動的に繰り上がる（docs/12 §6）
+  // most_movies すら棄却された場合は次善の valid 解が自動的に繰り上がる（docs/spec/10 §6）
   const best = valid[0]
   const picked: LabeledPlan[] = [{ label: 'most_movies', entry: best }]
   const seen = new Set([sig(best)])
@@ -67,7 +67,7 @@ export function selectPlans(
     (a, b) => a.score.endMin - b.score.endMin || compareScore(a.score, b.score),
   )
 
-  // must_priority: must 指定時のみ。最初の must 作品の startMin が最小の解（docs/05 §6）
+  // must_priority: must 指定時のみ。最初の must 作品の startMin が最小の解（docs/spec/05 §6）
   if (opts.mustMovieIds.length > 0) {
     const mustSet = new Set(opts.mustMovieIds)
     const firstMustStart = (e: Entry): number => {
@@ -81,7 +81,7 @@ export function selectPlans(
     )
   }
 
-  // alt: 残り枠を未選抜の次善解で埋める（docs/05 §6 #5。プールが枯れたらあるだけ返す）
+  // alt: 残り枠を未選抜の次善解で埋める（docs/spec/05 §6 #5。プールが枯れたらあるだけ返す）
   for (const e of valid) {
     if (picked.length >= maxResults) break
     if (seen.has(sig(e))) continue

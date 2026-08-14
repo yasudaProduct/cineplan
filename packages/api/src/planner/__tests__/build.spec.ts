@@ -4,7 +4,7 @@ import { runDp } from '../dp'
 import { selectPlans } from '../kbest'
 import type { Candidate, PlanContext } from '../types'
 
-// Entry → API Plan 変換（docs/12 §9）。docs/12 §7 の most_movies で legs を検証する。
+// Entry → API Plan 変換（docs/spec/10 §9）。docs/spec/10 §7 の most_movies で legs を検証する。
 
 const min = (s: string): number => {
   const [h, m] = s.split(':').map(Number)
@@ -57,7 +57,7 @@ function ctx(over: Partial<PlanContext> = {}): PlanContext {
   }
 }
 
-describe('buildPlan（docs/12 §7 の most_movies = s1>s3>s5）', () => {
+describe('buildPlan（docs/spec/10 §7 の most_movies = s1>s3>s5）', () => {
   const c = ctx()
   const best = selectPlans(runDp(c), { maxResults: 3, cands: CANDS, mustMovieIds: [] })[0]
   const plan = buildPlan(best.label, best.entry, c)

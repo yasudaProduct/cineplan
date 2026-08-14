@@ -57,7 +57,7 @@ function buildRequest(f: FormState): { req: PlanRequest } | { error: string } {
     return { error: 'スタート地点の駅名を入力してください' }
   }
   if (f.originKind === 'geo' && !f.originGeo) {
-    return { error: '現在地を取得してください（📍ボタン）' }
+    return { error: '現在地を取得してください（「現在地」ボタン）' }
   }
   const origin =
     f.originKind === 'geo' && f.originGeo
@@ -88,15 +88,20 @@ export default function PlanPage() {
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
   const restored = useRef(false)
 
-  // 初回マウントで localStorage から復元（過去日付になっていたら今日に置き換え）
+  // 初回マウントで localStorage から復元（過去日付になっていたら今日に置き換え）。
+  // ?date=YYYY-MM-DD があれば最優先（共有ページの「自分でもプランを作る」導線。07 §1.5）。
   useEffect(() => {
     if (restored.current) return
     restored.current = true
+    const urlDate = new URLSearchParams(window.location.search).get('date')
+    const presetDate =
+      urlDate && /^\d{4}-\d{2}-\d{2}$/.test(urlDate) && urlDate >= todayJst() ? urlDate : null
     const saved = loadFormState<FormState>()
-    if (saved) {
+    if (saved || presetDate) {
       setForm((cur) => {
         const merged = { ...cur, ...saved }
         if (!merged.date || merged.date < todayJst()) merged.date = todayJst()
+        if (presetDate) merged.date = presetDate
         return merged
       })
     }
@@ -168,7 +173,7 @@ export default function PlanPage() {
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-8">
-      <h1 className="mb-6 text-2xl font-bold">🎬 はしごプランを組む</h1>
+      <h1 className="mb-6 text-2xl font-bold">はしごプランを組む</h1>
 
       <PlanForm
         form={form}

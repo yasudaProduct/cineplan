@@ -1,16 +1,16 @@
 import { z } from 'zod'
 
-// "HH:mm"（利用可能時間帯・JST。24時超え表記は不可。時00〜23・分00〜59。docs/04）
+// "HH:mm"（利用可能時間帯・JST。24時超え表記は不可。時00〜23・分00〜59。docs/spec/04）
 export const HHMM = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)
 
-// origin / destination（駅名 or 緯度経度）。docs/04 components.schemas.Location
+// origin / destination（駅名 or 緯度経度）。docs/spec/04 components.schemas.Location
 export const Location = z.object({
   type: z.enum(['station', 'geo']),
   value: z.union([z.string(), z.object({ lat: z.number(), lng: z.number() })]),
 })
 export type Location = z.infer<typeof Location>
 
-// POST /v1/plan リクエスト（docs/04 PlanRequest）
+// POST /v1/plan リクエスト（docs/spec/04 PlanRequest）
 export const PlanRequest = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   timeWindow: z.object({ start: HHMM, end: HHMM }),
@@ -23,7 +23,7 @@ export const PlanRequest = z.object({
 })
 export type PlanRequest = z.infer<typeof PlanRequest>
 
-// 代替案ラベル（docs/05 §6）
+// 代替案ラベル（docs/spec/05 §6）
 export const PlanLabel = z.enum(['most_movies', 'less_travel', 'relaxed', 'must_priority', 'alt'])
 export type PlanLabel = z.infer<typeof PlanLabel>
 
@@ -69,7 +69,7 @@ export const PlanStats = z.object({
 })
 export type PlanStats = z.infer<typeof PlanStats>
 
-// 1日のはしご計画（docs/04 Plan）。API レスポンスの単位。
+// 1日のはしご計画（docs/spec/04 Plan）。API レスポンスの単位。
 export const Plan = z.object({
   label: PlanLabel,
   stats: PlanStats,
@@ -92,7 +92,7 @@ export const RelaxSuggestion = z.enum([
 ])
 export type RelaxSuggestion = z.infer<typeof RelaxSuggestion>
 
-// POST /v1/plan レスポンス（案なしも 200 で infeasible を返す。docs/04 設計メモ1）
+// POST /v1/plan レスポンス（案なしも 200 で infeasible を返す。docs/spec/04 設計メモ1）
 export const PlanResponse = z.object({
   plans: z.array(Plan),
   infeasible: z
@@ -105,7 +105,7 @@ export const PlanResponse = z.object({
 })
 export type PlanResponse = z.infer<typeof PlanResponse>
 
-// DP の比較キー（docs/12 §2）。utils/compare.ts の compareScore が対象。
+// DP の比較キー（docs/spec/10 §2）。utils/compare.ts の compareScore が対象。
 export const Score = z.object({
   count: z.number().int(),
   travel: z.number().int(),
@@ -115,10 +115,33 @@ export const Score = z.object({
 })
 export type Score = z.infer<typeof Score>
 
-// エラー本体（docs/04 ApiError）
+// エラー本体（docs/spec/04 ApiError）
 export const ApiError = z.object({
   code: z.string(),
   message: z.string(),
   details: z.record(z.string(), z.unknown()).optional(),
 })
 export type ApiError = z.infer<typeof ApiError>
+
+// ---- 共有プラン（P5-1。F-12/F-13・docs/spec/04 /plans）----
+
+// POST /v1/plans の運用防御（docs/spec/04 設計メモ8）。legs の現実的上限
+// （1日のはしごは screening 数本 + travel/wait でも 20 前後）に余裕を持たせた値。
+export const MAX_SHARED_PLAN_LEGS = 50
+
+// 共有プランの有効期限（F-13: 30日）
+export const SHARED_PLAN_TTL_DAYS = 30
+
+// POST /v1/plans リクエスト。表示中の Plan をそのまま永続化する（docs/spec/04 設計メモ2）。
+export const SharePlanRequest = z.object({
+  plan: Plan,
+})
+export type SharePlanRequest = z.infer<typeof SharePlanRequest>
+
+// POST /v1/plans レスポンス（201）
+export const SharePlanResponse = z.object({
+  planId: z.string(),
+  url: z.string().url(),
+  expiresAt: z.string().datetime(),
+})
+export type SharePlanResponse = z.infer<typeof SharePlanResponse>
