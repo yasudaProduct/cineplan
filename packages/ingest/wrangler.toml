@@ -96,11 +96,20 @@ max_concurrency = 1
 # 指数バックオフ（初回5分後）は msg.retry({delaySeconds}) で consumer 側が明示的に計算する（queue()）。
 max_retries = 3
 
-# ST の Cron は原則 OFF（docs/spec/11 §3.2。開発中に先方サイトを毎日叩かないため）。ここに
-# [env.st.triggers] を置かない。定期実行を検証したいときだけ日付固定の one-shot 式で
-# 一時追加し、検証後に必ず削除する（手順は docs/guides/01 §4.4。P1-6 Step B で実施済み）。
+# ST の Cron（ADR-0021。prod 構築を保留し ST を個人利用の常用環境にしたため有効化した。
+# 以前は「開発中に先方サイトを毎日叩かない」ため原則 OFF だった）。docs/spec/11 §3.2。
+#   - 取込ディスパッチ 20:00 UTC = 05:00 JST。P1-6 Step C の実測（5館サイクル340秒）+ fetch_failed
+#     再配信最大15分を踏まえ、N-02（前日 06:00 JST 完了）に余裕を持たせるため prod 定義の
+#     21:00 UTC より1時間前倒しにしている。
+#   - TravelMatrix 週次（月曜 18:00 UTC）と保持削除（17:00 UTC）は scheduled() が**文字列の完全一致**
+#     で分岐するため prod と同一文字列にする。取込ディスパッチは分岐の else 節なので時刻を変えてよい。
+# 【重要】取込 Cron を有効にする環境は常に1つだけ。prod を構築する際は**先にこの [env.st.triggers] を
+# 削除**すること（1劇場1日1セッションは環境をまたいで合算される。docs/spec/08 §0・§3）。
+[env.st.triggers]
+crons = ["0 20 * * *", "0 18 * * 1", "0 17 * * *"]
 
-# --- 本番環境（Cron 有効。21:00 UTC = 06:00 JST。N-02 の鮮度要件）---
+# --- 本番環境（構築保留中・ADR-0021。再開時はこの定義をそのまま使う。
+#     Cron 有効化は ST の [env.st.triggers] を削除してから。21:00 UTC = 06:00 JST。N-02 の鮮度要件）---
 [env.prod]
 name = "cinema-ingest-prod"
 

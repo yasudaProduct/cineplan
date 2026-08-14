@@ -13,8 +13,11 @@ import {
   selectFetchDates,
 } from './date-tabs'
 
-// UA は正直に名乗る（docs/spec/08 §3）。<domain> はドメイン確定（P5）まで暫定。
-export const USER_AGENT = 'CinemaHashigoBot/0.1 (+https://example.com/bot)'
+// UA は正直に名乗る（docs/spec/08 §3）。連絡先 URL は**到達可能な /bot ページ**を指すこと
+// （ADR-0021。プレースホルダ example.com は到達不能で §3 の要件を満たさないため廃止した）。
+// 独自ドメイン取得時に差し替える。api/lib/station-geo.ts・web/app/lib/site.ts と同一値に保つ。
+export const USER_AGENT =
+  'CinemaHashigoBot/0.1 (+https://cinema-web-st.yuta-develop-ct.workers.dev/bot)'
 const TIMEOUT_MS = 30_000
 const HOST_INTERVAL_MS = 5_000
 // タブクリック後に内容（本文テキスト）が変化するまでの待機上限とポーリング間隔

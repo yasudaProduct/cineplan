@@ -50,10 +50,11 @@ app.get('/', (c) => c.text('cinema-ingest'))
 export default {
   fetch: app.fetch,
 
-  // Cron（prod のみ有効・docs/spec/11 §3.2）。controller.cron で分岐:
-  // - 毎日 21:00 UTC: active 劇場を Queue 投入（P1-6）
-  // - 月曜 18:00 UTC: TravelMatrix 週次再生成（P4-6・ADR-0014）
-  // - 毎日 17:00 UTC: データ保持の期限削除（P5-5・docs/spec/09 §7）
+  // Cron（st で有効・prod は構築保留。ADR-0021・docs/spec/11 §3.2）。controller.cron で分岐:
+  // - 月曜 18:00 UTC: TravelMatrix 週次再生成（P4-6・ADR-0014）※文字列完全一致
+  // - 毎日 17:00 UTC: データ保持の期限削除（P5-5・docs/spec/09 §7）※文字列完全一致
+  // - 上記以外（else）: active 劇場を Queue 投入（P1-6）。取込ディスパッチの時刻は環境ごとに
+  //   異なってよい（st=20:00 UTC / prod 定義=21:00 UTC）ため、あえて文字列で判定しない。
   async scheduled(controller, env): Promise<void> {
     if (controller.cron === MATRIX_CRON) {
       const r = await buildTravelMatrix(env)

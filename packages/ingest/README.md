@@ -9,7 +9,7 @@
 ## パイプライン（1劇場1回分）
 
 ```
-Cron（prod）/ 手動トリガー（dev・st）
+Cron（st。prod は構築保留・ADR-0021）/ 手動トリガー（dev・st）
   → Fetch      schedule ページ + スケジュール画像を取得（正直UA・同一ホスト5秒間隔・30sタイムアウト）→ R2 保存
                複数日取得（tabs=日付タブ操作 / url_template={date}置換。ADR-0019）は日ごとに保存
   → Preprocess vision: 画像→base64 / text: HTML→テキスト
@@ -142,7 +142,7 @@ docker compose up -d slack-stub
 # 4) 開発サーバ
 pnpm -F @cinema/ingest dev              # → http://localhost:8787
 
-# 5) 手動取込（dev/st のみ。prod は cron）
+# 5) 手動取込（dev/st。st は cron も回るため 1日1セッションガードに注意）
 curl -X POST "http://localhost:8787/admin/ingest?theaterId=thr_cnv01"
 #   → {"runId":"...","status":"succeeded","extractedCount":N,"writtenCount":N}
 
@@ -177,7 +177,7 @@ pnpm lint          # Biome
 - **手動取込の 1日1セッションガード（docs/spec/08 §3）**: 当日すでに先方サイトへ取得済み（trigger=cron/manual の run が存在）の場合、UI は明示チェックボックスによる人間判断を要求する。retry（R2 再抽出）はサイトアクセスが無いためカウントしない。複数日取得の劇場は1回の取込で最大 `1+fetch_days` 回先方へアクセスするため、想定アクセス回数を劇場詳細に表示する（ADR-0019）。
 - **手動取込（UI）は Queue 経由**（`trigger='manual'`）: ブラウザ接続に処理を同期させると、rendered＋LLM抽出の途中で接続が切れた際に Workers が実行をキャンセルし `extracting` のまま孤児化する不具合があったため、cron と同じ consumer 経路に統一（06 §7）。押下直後は投入確認のみ表示し、結果は直近取込一覧で確認する。保険として `reapStaleRuns()` が 30分以上停止した run を `/admin` 読込時に打ち切る（text 日分割の正常上限より上。ADR-0017）。`POST /admin/ingest`（curl 用）のみ同期実行のまま。
 
-Cron（prod のみ・`docs/spec/11`）は `robots_status='allowed'` かつ `terms_checked_at` 設定済みの active 劇場のみ Queue 投入し、consumer が同じパイプラインを実行する（docs/spec/08 の多層防御）。
+Cron（現在は **st のみ**。prod は構築保留・ADR-0021・`docs/spec/11`）は `robots_status='allowed'` かつ `terms_checked_at` 設定済みの active 劇場のみ Queue 投入し、consumer が同じパイプラインを実行する（docs/spec/08 の多層防御）。**取込 Cron を有効にする環境は常に1つだけ**（1劇場1日1セッションは環境をまたいで合算されるため）。
 
 ## 環境変数
 

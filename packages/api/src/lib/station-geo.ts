@@ -8,7 +8,8 @@ import { STATION_GEO_TTL_SECONDS, StationGeo, stationGeoKvKey } from '@cinema/sh
 
 export const TRANSIT_API_DEFAULT_BASE = 'https://api.transit.ls8h.com'
 const SUGGEST_TIMEOUT_MS = 4000
-const USER_AGENT = 'CinemaHashigoBot/0.1 (+https://example.com/bot)'
+// ingest/worker/fetch.ts・web/app/lib/site.ts と同一値に保つ（ADR-0021。到達可能な /bot を指す）
+const USER_AGENT = 'CinemaHashigoBot/0.1 (+https://cinema-web-st.yuta-develop-ct.workers.dev/bot)'
 
 interface SuggestStation {
   name?: string

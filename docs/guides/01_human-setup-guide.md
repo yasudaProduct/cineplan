@@ -276,6 +276,10 @@ crons = ["30 6 28 7 *"]
 
 ## 5. 本番昇格（P5-7 の前後）
 
+> **現在このセクションの作業は不要（保留中・ADR-0021・2026-08-14）**
+> 一般公開の予定が当面ないため prod の構築は保留し、**ST を個人利用の常用環境**として運用している（開発は local → ST）。本節はその意思決定をしたときにそのまま使えるよう残してある。
+> 再開時の追加手順が1つある: **prod の取込 Cron を有効化する前に、ST の取込 Cron（`packages/ingest/wrangler.toml` の `[env.st.triggers]`）を停止する。** 同一劇場への取込セッションは環境をまたいで1日1回までのため、両方が回ると `08` §0 違反になる。
+
 ### 5.1 独自ドメイン
 
 1. 推奨: Cloudflare Registrar（dash → Domain Registration → Register domains）で取得（.com で年 1,000〜1,500 円程度・原価販売）。他社で取得済みなら zone を Cloudflare に追加。

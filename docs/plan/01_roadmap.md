@@ -70,7 +70,7 @@
     - **ディスパッチ**: 08:00:00 UTC の発火から 8.4秒後に1館目が開始。active 5館すべてが `trigger='cron'` で処理された（＝`scheduled()` が5件 enqueue した証拠）。
     - **直列性**: 前の run の `finished_at` から次の `started_at` まで **0.39〜0.65秒**。`max_batch_size=1` / `max_concurrency=1` の完全直列が実機で確認できた。run 行は consumer 内の `ingestTheater` で作られるため、5件同時ではなく1件ずつ現れる。
     - **サイクル時間（Step C）= 340秒（5分40秒）**。内訳: T・ジョイ梅田 110.8秒（`tabs`・5日分）/ シネ・ヌーヴォ 22.8秒 / テアトル梅田 54.7秒 / 大阪ステーションシネマ 97.8秒 / シアターセブン 52.1秒。事前見積りの最悪ケース（5館×`RUN_BUDGET_MS`12分≒60分）に対し**実測は 1/10 以下**。
-    - **N-02 突合**: prod cron は 21:00 UTC = 06:00 JST 開始のため完了は約 06:06 JST となり、「対象日の前日 06:00 JST までに取込完了」を**額面上6分超過する**。加えて `fetch_failed` の再配信1本で +15分（5分+10分）が乗るため、06:00 開始では容易に超える。**prod cron を 20:00 UTC（05:00 JST）へ前倒しすることを推奨**（54分の余裕。N-05 の 30館想定でも平均68秒/館なら約34分で収まる）。実施は P5-7 の prod 昇格時（オーナー判断）。
+    - **N-02 突合**: prod cron は 21:00 UTC = 06:00 JST 開始のため完了は約 06:06 JST となり、「対象日の前日 06:00 JST までに取込完了」を**額面上6分超過する**。加えて `fetch_failed` の再配信1本で +15分（5分+10分）が乗るため、06:00 開始では容易に超える。**prod cron を 20:00 UTC（05:00 JST）へ前倒しすることを推奨**（54分の余裕。N-05 の 30館想定でも平均68秒/館なら約34分で収まる）。実施は P5-7 の prod 昇格時（オーナー判断）。**2026-08-14 追記: prod 昇格を保留し ST を常用環境にしたため（ADR-0021）、この前倒しは ST の取込 Cron に適用済み（`0 20 * * *`）。prod 定義は 21:00 UTC のままなので、prod 構築時に改めて前倒しを判断する。**
     - **副次観察（P4-8 側の要対応）**: 5館のうち2館が V2 `COUNT_ANOMALY` で `validation_failed` → レビューキュー入り（T・ジョイ梅田 186件 vs 平均74.6 / 大阪ステーションシネマ 355件 vs 平均115.7）。いずれも**取込・抽出は正常で、過去平均が汚れているだけ**。`recentAvgCount` は直近7件の succeeded の `written_count` 平均で、T・ジョイは ADR-0019 以前の単日 run（27/62/51件）が、大阪ステーションシネマは 2026-07-19 の静的取得バグ由来の `written_count=0` 2件が平均を押し下げている。承認すれば `written_count` が記録され以降の平均が追従する（ADR-0019 の想定どおり）。**大阪ステーションシネマは対象日以降の screenings が D1 に0件**なので、承認しないと `/plan` に出ない。
     - ST では検証できない項目（既知・設計どおり）: `scheduled()` の TravelMatrix 分岐は cron 文字列の完全一致で選ばれるため one-shot 式では通らない。ユニットテストで固定済み・手動再生成は P4-6 で E2E 済みのため、prod 初回月曜のログ確認とする。
 - [x] **P1-7 失敗ハンドリング + Slack 通知**
@@ -145,7 +145,7 @@
   - Done ✓（機構実証）: `fetch_method=rendered` を Browser Rendering（`BROWSER` binding + @cloudflare/puppeteer・正直UA・30s）で実装し、**ローカル実 Chromium で E2E**（自前の JS 描画テストページ → 描画後 DOM を R2 保存 → `htmlToText` → `text_v1` 抽出 → zod → D1。site/estimated 終了時刻・screenName・detailPath(href) まで正確）。text run の R2 再抽出（.html から）も E2E 済み。P1 から未対応だった `extract_method=text` 経路がこれで開通（リトライ予算は vision と共有実装）。
   - 副次修正: wrangler 4.108 の「ローカル BR 使用後の外部 fetch ハング」を 4.110 更新で解消。gemini/ollama クライアントにタイムアウト追加（ハングをリトライ可能エラー化）。Ollama に構造化出力（format=JSONスキーマ）。Gemini 503 時に extraction_failed が正しく即時記録されることを実機で確認（docs/spec/06 §7 の実証）。
   - **実 rendered 劇場の追加は P4-8 の採用プロセス経由**（robots/規約の人間確認 → paused 起票 → 手動取込 → 3日連続 → active）。
-- [ ] **P4-8 劇場を5館まで拡充**
+- [x] **P4-8 劇場を5館まで拡充**
   - 各館とも採用プロセス（§2 of 08）を経て、3日連続成功で active。**採用判断・規約最終確認はオーナー作業**（docs/guides/01 §2.2）。
   - 候補下調べ（2026-07-15 実施。1サイト1〜2リクエストの通常閲覧相当）:
     - **◎ シアターセブン**（十三）: robots.txt 無し(404)=許容。**週間スケジュール画像を自社サイト掲載** → cinenouveau と同型の vision 抽出で対応可。規約明示禁止は見当たらず（オーナー最終確認要）。
@@ -182,8 +182,9 @@
   - Done ✓（2026-07-28）: `runRetention()`（`cron/retention.ts`）を prod 日次 Cron `0 17 * * *`（02:00 JST）に配線（`scheduled()` の3本目の分岐）。1つの `db.batch`＝1トランザクションで screenings(30日) → reviews(解決後90日・pending 除外) → runs(180日) → shared_plans(期限切れ) を削除。**docs/spec/09 §7 の SQL を2点正確化**（docs 先行）: ①日時列は `datetime()` ラップ（ISO `T` 形式と `datetime('now')` のスペース形式は文字列比較非互換＝P5-1 で発見した問題の再発防止）②runs は `NOT IN (SELECT ingest_run_id FROM extraction_reviews)` ガード（D1 は FK を既定で強制し batch 全体が rollback するため。pending 長期残存時は当該 run をスキップし解決後の Cron で自然に消える）。管理ダッシュボードに手動実行ボタン（`POST /admin/retention/run`。Cron の無い ST での検証・随時実行用）。**R2 スナップショット90日は ST バケットにライフサイクルルール適用済み**（`expire-snapshots-90d`・prefix `raw/`。prod は P5-7 = guides/01 §5.2 に手順追記）。ユニット7件 + ローカル D1 E2E（境界データ9行: 期限超が消え期限内と pending・FK ガード対象が残ることを実 SQL で確認）。prod 実 cron の初回実行はデプロイ後にログで確認する運用（TravelMatrix と同じ）。
 - [x] **P5-6 コスト監視ダッシュボード仕上げ**（LLM トークン日次・アラート）（実装ブランチ `feat/p5-6-cost-monitoring`）
   - Done ✓（2026-07-28）: docs/spec/06 §8 のアラートを実装 — **JST 当日の in-tokens 合計が閾値（既定 500万・`COST_ALERT_DAILY_IN_TOKENS` var で上書き可）を超えたら Slack 警告**（N-07）。判定は run 完了ごとの**閾値跨ぎ方式**（この run で初めて閾値以上になったときだけ通知。Queue が直列消費のため KV 等の通知済みフラグ無しで1日1回に収まる・日付が変われば自然に再武装）。呼出点は queue() の取込/再抽出完了後 + 同期 `/admin/ingest` の3箇所（全経路カバー）。アラート失敗は握りつぶし run の成否に影響させない。ダッシュボードの LLM ウィジェットに「本日 in: X / 警告閾値 Y」を追加（超過時は警告色）。7日スパークライン（P4-2）は既存のまま。ユニット7件（跨ぎ/未満/再通知なし/ちょうど到達/var 上書き/不正値/失敗握りつぶし）+ ローカル実機でダッシュボード表示確認。301 passed。
-- [ ] **P5-7 本番昇格**（`spec/11_environments-deploy.md`）
-  - prod 用 D1/R2/KV/Queues 作成、`wrangler secret` で prod シークレット投入、Cron を prod で有効化、初回 `v0.1.0` タグで承認デプロイ。ST で一通り検証済みを前提とする。
+- [ ] **P5-7 本番昇格** — **保留（一般公開の意思決定まで。ADR-0021・2026-08-14）**（`spec/11_environments-deploy.md`）
+  - **保留の理由と代替運用**: 当面の利用者はオーナー本人のみで一般公開の予定がないため、prod を構築せず **ST を個人利用の常用環境**とする（開発は local → ST の2段）。ST の Cron を有効化し（取込 05:00 JST・TravelMatrix 週次・保持削除 02:00 JST）、UA の連絡先を ST の実 URL に差し替えた。`[env.prod]` 定義・`deploy-prod.yml`・`guides/01` §5 の手順は再開時にそのまま使えるよう残してある。
+  - **再開時の手順（変更なし + 1点追加）**: prod 用 D1/R2/KV/Queues 作成、`wrangler secret` で prod シークレット投入、Cron を prod で有効化、初回 `v0.1.0` タグで承認デプロイ。**追加: prod の取込 Cron を有効化する前に ST の取込 Cron を停止する**（同時に回すと1劇場1日2セッションとなり 08 §0 違反）。あわせて `CONTACT_EMAIL`（現在 null=「準備中」表示）と独自ドメインを確定し UA を差し替える。
   - Done: prod で取込→算出→Web が動作し、管理サイトに Access がかかっている。
 
 ## P6. モバイルアプリ（後続・概要のみ）
@@ -207,7 +208,7 @@
 | ST 有効化まで | Slack Webhook（§2.3。ローカルは slack-stub で可） | P4-0（ST の実通知） |
 | P3 完了後（推奨） | ST 有効化一式（§3） | P4-0 以降すべて |
 | P4 中 | Access 設定（§4.1）/ 駅すぱあとキー（§4.2）/ 劇場2〜5館の採用確認（§4.3） | P4-1 / P4-6 / P4-8 |
-| P5 終盤 | ドメイン・prod リソース・prod シークレット・法務文面確認・タグ承認（§5） | P5-7 |
+| P5 終盤 | ドメイン・prod リソース・prod シークレット・法務文面確認・タグ承認（§5） | P5-7（**保留中**。ADR-0021。一般公開を決めるまで着手不要） |
 | リリース後 | 日次/週次/90日の運用（§6） | — |
 
 ---
@@ -219,5 +220,5 @@
 3. `08_compliance-policy.md` §0 の禁止事項に触れる実装はしない。判断に迷ったら実装せず確認を求める。
 4. スキーマ変更が必要になったら、まず `packages/shared` と該当 docs を直し、その後に実装へ反映する（実装だけ先に変えない）。
 5. 環境は local / st / prod の3つ（`spec/11_environments-deploy.md`）。シークレットはコードに直書きせず、local は `.dev.vars`、st/prod は `wrangler secret`。ST と本番の Cloudflare リソースIDを取り違えない。
-6. st の Cron（取込定期実行）は原則 OFF。開発中に先方サイトを不必要に叩かない（`08` の取得マナー）。
+6. **st の Cron は有効**（ADR-0021。prod 構築を保留し st を個人利用の常用環境にしたため）。取込 Cron を有効にする環境は常に1つだけで、現在は st。**取込 Cron を持つ環境を増やさない**（1劇場1日1セッションは環境をまたいで合算される。`08` §3）。開発中に先方サイトを手動で不必要に叩かない点は従来どおり。
 7. 人間作業（`guides/01_human-setup-guide.md`）が前提のタスクに当たったら、実装を止めて依頼する。アカウント作成・課金・規約判断・本番承認を Claude Code が代行しない。
