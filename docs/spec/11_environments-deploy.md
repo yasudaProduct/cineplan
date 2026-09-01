@@ -154,10 +154,10 @@ APP_ENV = "prod"
 - ingest パッケージも同様に `[env.st]` / `[env.prod]` を定義（Queues・R2・Cron 含む）。
 - **Cron は st / prod で有効**（ADR-0021 以前は「本番のみ有効・st は原則OFF」だった。prod 構築を保留し st を個人利用の常用環境にしたため、日々の取込は st の Cron が担う）。**同一劇場への取込セッションは1日1回**（`08` §0・§3）なので、**st と prod の取込 Cron を同時に有効化しない**。将来 prod を構築する際は st の取込 Cron を停止してから prod を有効化する。
 - Cron は3本（st / prod 共通の役割）:
-  - 取込ディスパッチ: **st は毎日 20:00 UTC = 05:00 JST**（P1-6 Step C の実測サイクル340秒 + `fetch_failed` 再配信最大15分を踏まえ N-02 に余裕を持たせる）。prod 定義は 21:00 UTC = 06:00 JST のまま（構築時に前倒しを再判断する）。
-  - TravelMatrix 週次再生成: 月曜 18:00 UTC = 火曜 03:00 JST（ADR-0014）。
-  - データ保持の期限削除: 毎日 17:00 UTC = 02:00 JST（P5-5・`09` §7）。
-- `scheduled` ハンドラは `controller.cron` の**文字列完全一致**で TravelMatrix / 保持削除に分岐し、**それ以外は取込ディスパッチ**（else 節）になる。したがって後2者は st/prod で同一文字列にする必要があり、取込ディスパッチのみ環境ごとに時刻を変えられる。管理サイトからの手動再生成・手動取込は従来どおり両環境で可能。
+  - 取込ディスパッチ: **st は毎日 20:00 UTC = 05:00 JST**（P1-6 Step C の実測サイクル340秒 + `fetch_failed` 再配信最大15分を踏まえ N-02 に余裕を持たせる）。prod 定義は 21:00 UTC = 06:00 JST のまま（構築時に前倒しを再判断する）。**st は ADR-0022 により一時停止中**（`[env.st.triggers]` の `crons` から除外。Gemini 無料枠のクォータ超過・高負荷による取込失敗の頻発を受けた措置。理由・再開条件は ADR-0022 参照）。
+  - TravelMatrix 週次再生成: 月曜 18:00 UTC = 火曜 03:00 JST（ADR-0014）。st で稼働中（停止対象外）。
+  - データ保持の期限削除: 毎日 17:00 UTC = 02:00 JST（P5-5・`09` §7）。st で稼働中（停止対象外）。
+- `scheduled` ハンドラは `controller.cron` の**文字列完全一致**で TravelMatrix / 保持削除に分岐し、**それ以外は取込ディスパッチ**（else 節）になる。したがって後2者は st/prod で同一文字列にする必要があり、取込ディスパッチのみ環境ごとに時刻を変えられる。管理サイトからの手動取込は st で引き続き可能（1日1回の上限は変わらない）。
 - **Workers Logs（観測性。2026-07-19 追加）**: ingest は `[observability] enabled = true` を既定/`[env.st.observability]`/`[env.prod.observability]` の3箇所に定義し、構造化ログ（`packages/ingest/src/log.ts`）を保存・検索可能にする。サンプリング100%・保持は Workers Paid で7日。observability は環境セクションへ継承されないため環境ごとに明示する。イベント台帳は `packages/ingest/README.md`、ログの見方は `16` §6。
 
 ## 4. シークレット・環境変数
@@ -342,7 +342,7 @@ prod:   （v* タグ + 承認で Actions が）apply ... cinema_hashigo_prod --e
 |---|---|---|---|
 | DB | D1 local (SQLite) | D1 st | D1 prod |
 | 外部API/通知 | Compose スタブ | 実サービス（低頻度） | 実サービス |
-| Cron（取込定期実行） | エミュレート | **ON**（05:00 JST。ADR-0021） | 定義のみ（構築保留。ADR-0021） |
+| Cron（取込定期実行） | エミュレート | **一時停止中**（ADR-0022。TravelMatrix週次・保持削除は稼働） | 定義のみ（構築保留。ADR-0021） |
 | Browser Rendering | ローカル Chromium 起動（実機同等） | 有効 | 有効 |
 | Workers Logs（ingest） | dev コンソール出力のみ | 有効（保持7日） | 有効（保持7日） |
 | Access（管理サイト） | 省略可 | 有効 | 有効 |

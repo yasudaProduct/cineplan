@@ -67,7 +67,7 @@ compose.yaml
 ## 環境（3つ・詳細は docs/spec/11）
 
 - **local**: wrangler dev（D1=SQLite）+ Docker Compose の補助スタブ。`.dev.vars` で秘密。
-- **st**: クラウド動作確認 **＋ 個人利用の常用環境**（ADR-0021）。`develop` push で Actions が自動デプロイ（ADR-0016）。**Cron は ON**（取込 05:00 JST・TravelMatrix 週次・保持削除 02:00 JST）。
+- **st**: クラウド動作確認 **＋ 個人利用の常用環境**（ADR-0021）。`develop` push で Actions が自動デプロイ（ADR-0016）。**Cron は取込ディスパッチのみ一時停止中**（TravelMatrix 週次・保持削除 02:00 JST は稼働。取込 05:00 JST は ADR-0022 により停止）。
 - **prod**: 本番。`v*` タグ + 承認ゲートでデプロイ。**一般公開時まで構築を保留**（ADR-0021。定義・手順は残置）。取込 Cron を有効にする環境は常に1つだけ（環境をまたいで1劇場1日1セッション。prod 構築時は st の取込 Cron を先に停止する）。
 - st/prod の Cloudflare リソースは完全分離。IDを取り違えない。
 
