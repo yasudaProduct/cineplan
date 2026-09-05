@@ -137,3 +137,49 @@ describe('pickDefaultDate — 上映データ画面の既定表示日（docs/spe
     expect(pickDefaultDate([], '2026-07-20')).toBeNull()
   })
 })
+
+// ADR-0023 の回帰テスト: 抽出を見送った日を coverage に含めると、DELETE だけされて
+// INSERT が無く既存データを失う。「上映が無い」と「今回は分からなかった」を区別する。
+describe('replaceScreeningsByDate — 見送った日を洗い替え範囲から除外（ADR-0023）', () => {
+  it('skipDates の日は DELETE されず既存データが残る', async () => {
+    const { db, getRows } = createFakeDb([
+      { theaterId: 'thr_a', businessDate: '2026-07-11', movieId: 'mov_old' },
+    ])
+    // 07-10 と 07-12 は取れたが 07-11 は抽出に失敗して見送った
+    const rows = [screening('2026-07-10', 'mov_1'), screening('2026-07-12', 'mov_2')]
+    await replaceScreeningsByDate(db, 'thr_a', 'run_1', rows, '2026-07-10', ['2026-07-11'])
+    const after = getRows()
+    expect(after.filter((r) => r.businessDate === '2026-07-11')).toEqual([
+      { theaterId: 'thr_a', businessDate: '2026-07-11', movieId: 'mov_old' },
+    ])
+    expect(after.map((r) => r.movieId).sort()).toEqual(['mov_1', 'mov_2', 'mov_old'])
+  })
+
+  it('skipDates 未指定なら従来どおり範囲内の中日も洗い替える（stale データ防止は維持）', async () => {
+    const { db, getRows } = createFakeDb([
+      { theaterId: 'thr_a', businessDate: '2026-07-11', movieId: 'mov_old' },
+    ])
+    const rows = [screening('2026-07-10', 'mov_1'), screening('2026-07-12', 'mov_2')]
+    await replaceScreeningsByDate(db, 'thr_a', 'run_1', rows, '2026-07-10')
+    expect(
+      getRows()
+        .map((r) => r.movieId)
+        .sort(),
+    ).toEqual(['mov_1', 'mov_2'])
+  })
+
+  it('抽出行がある日は skipDates に入っていても洗い替える（書込側を優先し重複を防ぐ）', async () => {
+    const { db, getRows } = createFakeDb([
+      { theaterId: 'thr_a', businessDate: '2026-07-10', movieId: 'mov_old' },
+    ])
+    await replaceScreeningsByDate(
+      db,
+      'thr_a',
+      'run_1',
+      [screening('2026-07-10', 'mov_1')],
+      '2026-07-10',
+      ['2026-07-10'],
+    )
+    expect(getRows().map((r) => r.movieId)).toEqual(['mov_1'])
+  })
+})

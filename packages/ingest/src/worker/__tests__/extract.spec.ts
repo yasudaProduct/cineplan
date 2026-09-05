@@ -7,8 +7,9 @@ import {
   MAX_DATES,
 } from '../extract'
 
-// review指摘#2の回帰テスト: LLM APIエラーは最大2回・JSONパース不能/zod NGは
-// 合算で最大1回、fetch 済み画像を使い回してリトライする（再取得はしない）。docs/spec/06 §7。
+// review指摘#2の回帰テスト: LLM APIエラーは最大2回・JSONパース不能は1回、fetch 済み画像を
+// 使い回してリトライする（再取得はしない）。docs/spec/06 §7。
+// ADR-0023 で zod NG（封筒）のリトライは廃止した（temperature 0 では同一出力が返るだけ）。
 
 const okResponse = (json: unknown) => ({
   raw: JSON.stringify(json),
@@ -77,27 +78,47 @@ describe('extractVisionWithRetries', () => {
     expect(extractMock).toHaveBeenCalledTimes(2) // 初回 + 1回リトライ
   })
 
-  it('zod NG は最大1回リトライして成功できる', async () => {
-    extractMock
-      .mockResolvedValueOnce(okResponse({ businessDate: 'invalid-date', screenings: [] }))
-      .mockResolvedValueOnce(okResponse(VALID))
-    const { result } = await extractVisionWithRetries({}, [], '2026-07')
-    expect(result.businessDate).toBe('2026-07-10')
-    expect(extractMock).toHaveBeenCalledTimes(2)
-  })
-
-  it('zod NG が2回連続だと予算超過で throw する', async () => {
+  // ADR-0023: 封筒（businessDate 等）の zod NG はリトライしない。temperature 0 では
+  // 同一プロンプトの再送＝同一出力で、トークンと時間を消費して必ず同じ失敗になるため。
+  it('zod NG（封筒）はリトライせず1回で throw する', async () => {
     extractMock.mockResolvedValue(okResponse({ businessDate: 'invalid-date', screenings: [] }))
-    await expect(extractVisionWithRetries({}, [], '2026-07')).rejects.toThrow()
+    await expect(extractVisionWithRetries({}, [], '2026-07')).rejects.toThrow(/スキーマNG1/)
+    expect(extractMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('zod NG のエラーに実値を添える（error_message だけで原因が読めるように）', async () => {
+    extractMock.mockResolvedValue(okResponse({ businessDate: 'invalid-date', screenings: [] }))
+    await expect(extractVisionWithRetries({}, [], '2026-07')).rejects.toThrow(
+      /businessDate="invalid-date"/,
+    )
+  })
+
+  it('JSONパース不能の予算は zod NG と独立（パース不能1回リトライ後の zod NG で即 throw）', async () => {
+    extractMock
+      .mockResolvedValueOnce({ raw: 'not json', model: 'stub:model', inTokens: 1, outTokens: 1 })
+      .mockResolvedValueOnce(okResponse({ businessDate: 'invalid-date', screenings: [] }))
+    await expect(extractVisionWithRetries({}, [], '2026-07')).rejects.toThrow(
+      /JSON不正1・スキーマNG1/,
+    )
     expect(extractMock).toHaveBeenCalledTimes(2)
   })
 
-  it('JSONパース不能とzod NGは予算を共有する（パース不能1回消費後のzod NGはリトライされない）', async () => {
-    extractMock
-      .mockResolvedValueOnce({ raw: 'not json', model: 'stub:model', inTokens: 1, outTokens: 1 }) // 予算消費
-      .mockResolvedValueOnce(okResponse({ businessDate: 'invalid-date', screenings: [] })) // 予算切れ
-    await expect(extractVisionWithRetries({}, [], '2026-07')).rejects.toThrow()
-    expect(extractMock).toHaveBeenCalledTimes(2)
+  // ADR-0023: 行単位の NG は捨てて通す（run 全体を落とさない）
+  it('行単位のスキーマ NG は該当行だけ捨てて成功し、notes に実値を残す', async () => {
+    extractMock.mockResolvedValueOnce(
+      okResponse({
+        businessDate: '2026-07-10',
+        screenings: [
+          { movieTitle: '水曜どうでしょう祭', startTime: '未定' },
+          { movieTitle: '冴えないボクと映えるキミ', startTime: '9:10' },
+        ],
+      }),
+    )
+    const { result } = await extractVisionWithRetries({}, [], '2026-07')
+    expect(extractMock).toHaveBeenCalledTimes(1)
+    expect(result.screenings).toHaveLength(1)
+    expect(result.screenings[0]?.movieTitle).toBe('冴えないボクと映えるキミ')
+    expect(result.notes).toMatch(/screenings\[0\]\.startTime="未定"/)
   })
 })
 
@@ -240,24 +261,40 @@ describe('extractTextDaySplit', () => {
     expect(extractMock).toHaveBeenCalledTimes(5)
   })
 
-  it('日別呼出が予算切れになると run 全体が失敗し、どの日で失敗したかを前置する', async () => {
+  // ADR-0023: 1日の失敗で他の日の抽出結果まで捨てない
+  it('日別呼出が予算切れでもその日を見送って続行し、skippedDates と notes に残す', async () => {
     extractMock
       .mockResolvedValueOnce(okResponse({ dates: ['2026-07-21', '2026-07-22'] }))
       .mockResolvedValueOnce(dayResult('2026-07-21', ['A']))
       .mockRejectedValue(new Error('gemini timeout: 120000ms 経過'))
-    await expect(
-      extractTextDaySplit({}, 'x', '2026-07', 'http://e.com/', '2026-07-21'),
-    ).rejects.toThrow(/日別抽出\(2026-07-22\).*予算切れ.*timeout/s)
+    const { result, skippedDates } = await extractTextDaySplit(
+      {},
+      'x',
+      '2026-07',
+      'http://e.com/',
+      '2026-07-21',
+    )
+    expect(result.screenings).toHaveLength(1) // 1日目は残る
+    expect(skippedDates).toEqual(['2026-07-22'])
+    expect(result.notes).toMatch(/2026-07-22: 抽出失敗のため見送り.*timeout/s)
     expect(extractMock).toHaveBeenCalledTimes(2 + 3) // 発見+1日目 + 2日目3試行で打ち切り
   })
 
-  it('発見コールの zod NG（dateList スキーマ逸脱）は malformed 予算でリトライされる', async () => {
+  it('全日が失敗したら run 全体を失敗させる（0件で洗い替えて既存データを消さない）', async () => {
     extractMock
-      .mockResolvedValueOnce(okResponse({ dates: ['not-a-date'] })) // zod NG
-      .mockResolvedValueOnce(okResponse({ dates: [] }))
-    const { result } = await extractTextDaySplit({}, 'x', '2026-07', 'http://e.com/', '2026-07-21')
-    expect(result.screenings).toEqual([])
-    expect(extractMock).toHaveBeenCalledTimes(2)
+      .mockResolvedValueOnce(okResponse({ dates: ['2026-07-21', '2026-07-22'] }))
+      .mockRejectedValue(new Error('gemini timeout: 120000ms 経過'))
+    await expect(
+      extractTextDaySplit({}, 'x', '2026-07', 'http://e.com/', '2026-07-21'),
+    ).rejects.toThrow(/日別抽出\(2026-07-22\).*予算切れ.*timeout/s)
+  })
+
+  it('発見コールの zod NG（dateList スキーマ逸脱）はリトライせず実値付きで throw する', async () => {
+    extractMock.mockResolvedValueOnce(okResponse({ dates: ['not-a-date'] })) // zod NG
+    await expect(
+      extractTextDaySplit({}, 'x', '2026-07', 'http://e.com/', '2026-07-21'),
+    ).rejects.toThrow(/日付発見:.*dates\[0\]="not-a-date"/s)
+    expect(extractMock).toHaveBeenCalledTimes(1)
   })
 
   it('トークンが全呼出 null なら合算も null（混在時は非nullのみ合算）', async () => {

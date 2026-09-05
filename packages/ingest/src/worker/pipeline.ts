@@ -195,7 +195,7 @@ export async function ingestTheater(
       prefix,
     )
   }
-  const { ext, result } = outcome
+  const { ext, result, skippedDates } = outcome
   logInfo('run.extract.ok', {
     runId,
     theaterId,
@@ -204,6 +204,10 @@ export async function ingestTheater(
     inTokens: ext.inTokens,
     outTokens: ext.outTokens,
     screenings: result.screenings.length,
+    skippedDates: skippedDates ?? [],
+    // 成功 run の notes は D1 に残らない（ingest_runs に列が無い）ため、
+    // 行落とし・日見送りの記録はここが唯一の追跡手段になる（ADR-0023）。
+    notes: result.notes?.slice(0, 500) ?? null,
   })
 
   // 5. 妥当性検証 V1/2/5/6（NG はレビューキュー行き＝validation_failed）
@@ -218,6 +222,7 @@ export async function ingestTheater(
 
   // 7〜8. 通常書込パス（正規化→movie解決→洗い替え。承認/再抽出と同一関数・write.ts）。
   //    coverageFloor=fetch 当日で stale データを防ぐ（docs/spec/03 §7）。
+  //    抽出を見送った日は洗い替え範囲から外す（既存データを消さない。ADR-0023）。
   const written = await normalizeResolveWrite(
     env.DB,
     theaterId,
@@ -225,6 +230,7 @@ export async function ingestTheater(
     result,
     businessDate,
     baseUrl,
+    skippedDates,
   )
   await completeRun(env.DB, runId, {
     snapshotKey: prefix,

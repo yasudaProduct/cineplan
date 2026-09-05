@@ -325,8 +325,13 @@ describe('validateNormalized (V7 SCREEN_TIME_OVERLAP)', () => {
 })
 
 describe('parseExtraction (zod)', () => {
-  it('スキーマ不正は throw', () => {
-    expect(() => parseExtraction({ businessDate: 'bad', screenings: [], notes: null })).toThrow()
+  it('封筒（businessDate）のスキーマ不正は throw し、実値を添える', () => {
+    expect(() => parseExtraction({ businessDate: 'bad', screenings: [], notes: null })).toThrow(
+      /businessDate="bad"/,
+    )
+  })
+  it('screenings が配列でなければ封筒 NG として throw', () => {
+    expect(() => parseExtraction({ businessDate: '2026-07-10', screenings: null })).toThrow()
   })
   it('正しい形は通る', () => {
     const r = parseExtraction(result([sc({ movieTitle: 'A', startTime: '10:00' })]))
@@ -336,6 +341,82 @@ describe('parseExtraction (zod)', () => {
     const raw = { businessDate: '2026-07-10', screenings: [] } // notes キー自体が無い
     const r = parseExtraction(raw)
     expect(r.notes).toBeUndefined()
+  })
+})
+
+// ADR-0023 の回帰テスト: 大阪ステーションシネマの週間表は上映時刻が未確定のセルに
+// "未定" と書く。LLM がこれを startTime に載せると TIME_RE を外れるが、その1行のために
+// run 全体（＝同じ呼出で正しく取れた他の行・他の日）を捨ててはならない。
+describe('parseExtraction — 行単位のスキーマ NG（ADR-0023）', () => {
+  it('startTime="未定" の行だけを捨てて、正しい行は残す', () => {
+    const r = parseExtraction({
+      businessDate: '2026-09-07',
+      screenings: [
+        { movieTitle: '水曜どうでしょう祭UNITE2026', startTime: '未定' },
+        { movieTitle: '冴えないボクと映えるキミ', startTime: '9:10' },
+      ],
+    })
+    expect(r.screenings).toHaveLength(1)
+    expect(r.screenings[0]?.movieTitle).toBe('冴えないボクと映えるキミ')
+  })
+
+  it('捨てた行の件数・パス・実値を notes に残す（error_message から原因が読めるように）', () => {
+    const r = parseExtraction({
+      businessDate: '2026-09-07',
+      screenings: [{ movieTitle: 'A', startTime: '未定' }],
+    })
+    expect(r.notes).toBe(
+      'スキーマ不正の1件を除外: screenings[0].startTime="未定"(invalid_string:regex)',
+    )
+  })
+
+  it('既存の notes は保持して追記する', () => {
+    const r = parseExtraction({
+      businessDate: '2026-09-07',
+      screenings: [{ movieTitle: 'A', startTime: '未定' }],
+      notes: '休館日と記載',
+    })
+    expect(r.notes).toMatch(/^休館日と記載 \/ スキーマ不正の1件を除外/)
+  })
+
+  it('捨てる行が無ければ notes を変えない（undefined のまま）', () => {
+    const r = parseExtraction({
+      businessDate: '2026-09-07',
+      screenings: [{ movieTitle: 'A', startTime: '9:10' }],
+    })
+    expect(r.notes).toBeUndefined()
+  })
+
+  it('全行が NG なら 0件 + notes になる（V1 は通り V2 COUNT_ANOMALY が拾う）', () => {
+    const r = parseExtraction({
+      businessDate: '2026-09-11',
+      screenings: [
+        { movieTitle: 'A', startTime: '未定' },
+        { movieTitle: 'B', startTime: '未定' },
+      ],
+    })
+    expect(r.screenings).toEqual([])
+    expect(validateExtracted(r, {})).toBeNull() // V1: notes があるので通過
+    expect(validateExtracted(r, { avgCount: 70 })?.code).toBe('COUNT_ANOMALY') // V2 が拾う
+  })
+
+  it('報告は先頭5件までに抑える（生出力の垂れ流しを防ぐ。log.ts のガードレール）', () => {
+    const r = parseExtraction({
+      businessDate: '2026-09-11',
+      screenings: Array.from({ length: 8 }, (_, i) => ({ movieTitle: `M${i}`, startTime: '未定' })),
+    })
+    expect(r.notes).toMatch(/^スキーマ不正の8件を除外:/)
+    expect(r.notes).toMatch(/ほか3件$/)
+  })
+
+  it('長すぎる実値は40字で切る', () => {
+    const long = `${'あ'.repeat(60)}:00`
+    const r = parseExtraction({
+      businessDate: '2026-09-11',
+      screenings: [{ movieTitle: 'A', startTime: long }],
+    })
+    expect(r.notes).toMatch(/…\(invalid_string:regex\)$/)
+    expect(r.notes?.length ?? 0).toBeLessThan(120)
   })
 })
 

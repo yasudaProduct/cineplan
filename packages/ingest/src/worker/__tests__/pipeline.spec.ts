@@ -55,7 +55,10 @@ vi.mock('../extract', () => ({
   EXTRACTION_DEADLINE_MS: 10 * 60_000,
 }))
 vi.mock('../../db/movies', () => ({ resolveMovieId: vi.fn(async () => 'mov_1') }))
-vi.mock('../../db/screenings', () => ({ replaceScreeningsByDate: vi.fn(async () => 1) }))
+const replaceScreeningsByDateMock = vi.fn(async () => 1)
+vi.mock('../../db/screenings', () => ({
+  replaceScreeningsByDate: replaceScreeningsByDateMock,
+}))
 vi.mock('../../db/reviews', () => ({
   createReview: vi.fn(async () => 'rev_1'),
   recentAvgCount: vi.fn(async () => undefined),
@@ -318,5 +321,52 @@ describe('ingestTheater — 複数日取得（ADR-0019）', () => {
     expect(fetchScheduleMock).toHaveBeenCalledTimes(1)
     expect(fetchRenderedMock).not.toHaveBeenCalled()
     expect(fetchTemplateMock).not.toHaveBeenCalled()
+  })
+})
+
+// ADR-0023 の回帰テスト: 抽出を見送った日は洗い替え範囲から外して既存データを守る。
+describe('ingestTheater — 見送った日を洗い替え範囲から除外（ADR-0023）', () => {
+  const outcome = {
+    ext: {
+      parsed: {},
+      raw: '{}',
+      model: 'stub:m',
+      promptVersion: 'text_v3',
+      inTokens: 1,
+      outTokens: 1,
+    },
+    result: {
+      businessDate: '2026-09-06',
+      screenings: [{ movieTitle: 'A', startTime: '10:00' }],
+      notes: null,
+    },
+  }
+
+  beforeEach(() => {
+    getTheaterMock.mockResolvedValue({
+      ...compliantTheater,
+      fetchMethod: 'rendered',
+      extractMethod: 'text',
+    })
+    fetchRenderedMock.mockResolvedValue({
+      scheduleHtml: '<table>x</table>',
+      images: [],
+      fetchedAt: '2026-09-06T00:00:00.000Z',
+    })
+  })
+
+  it('skippedDates を書込関数（replaceScreeningsByDate）へそのまま渡す', async () => {
+    extractTextDaySplitMock.mockResolvedValue({ ...outcome, skippedDates: ['2026-09-07'] })
+    const r = await ingestTheater({ SNAPSHOTS: { put: vi.fn() } } as never, 'thr_test', 'manual')
+    expect(r.status).toBe('succeeded')
+    const args = replaceScreeningsByDateMock.mock.calls[0] as unknown[]
+    expect(args[5]).toEqual(['2026-09-07'])
+  })
+
+  it('見送りが無ければ空配列を渡す（従来どおり全範囲を洗い替える）', async () => {
+    extractTextDaySplitMock.mockResolvedValue({ ...outcome, skippedDates: [] })
+    await ingestTheater({ SNAPSHOTS: { put: vi.fn() } } as never, 'thr_test', 'manual')
+    const args = replaceScreeningsByDateMock.mock.calls[0] as unknown[]
+    expect(args[5]).toEqual([])
   })
 })

@@ -43,14 +43,15 @@ Cron（st。prod は構築保留・ADR-0021）/ 手動トリガー（dev・st）
 | `run.start` | pipeline / reextract | runId, theaterId, trigger, businessDate, fetchMethod, extractMethod, sourceRunId・inputChars・images（再抽出） |
 | `run.fetch.ok` / `.fail` | pipeline | runId, ms, htmlChars, images |
 | `run.snapshot.saved` | pipeline | runId, prefix, images |
-| `run.extract.ok` / `.fail` | pipeline / reextract | runId, ms, model, inTokens, outTokens, screenings |
+| `run.extract.ok` / `.fail` | pipeline / reextract | runId, ms, model, inTokens, outTokens, screenings, **skippedDates・notes**（ADR-0023。行落とし・日見送りの記録） |
 | `run.validate.ng` | 〃 | runId, code, detail |
 | `run.done` | 〃（**全終端で必ず1回**） | runId, theaterId, status, extracted, written, error |
 | `llm.call.ok` / `.fail` | llm/gemini.ts・ollama.ts | provider, model, ms, **kind（timeout / http / network）**, status, inTokens, outTokens, rawChars |
-| `llm.retry` / `llm.giveup` | worker/extract.ts | kind（api / parse / schema）, 残リトライ数, apiFailures, malformedFailures |
+| `llm.retry` / `llm.giveup` | worker/extract.ts | kind（api / parse / schema）, 残リトライ数, api / parse / schema の失敗回数。**schema は retry せず giveup のみ**（ADR-0023） |
 | `extract.dates.ok` | worker/extract.ts（text 日分割の日付発見。ADR-0017） | dates, ms, inTokens, outTokens |
 | `extract.dates.truncated` | 〃（発見日付が上限超過） | found, cap |
 | `extract.day.ok` | 〃（日別抽出の1日分完了） | date, screenings, droppedOffDate, ms, inTokens, outTokens |
+| `extract.day.skip` | 〃（その日の抽出に失敗し見送り。ADR-0023） | date, label, error |
 | `extract.deadline.exceeded` | 〃（抽出デッドライン超過で打ち切り） | elapsedMs, deadlineMs, doneDays, totalDays |
 | `admin.enqueue.ingest` / `.reextract`・`admin.ingest.sync`・`admin.theater.status`・`admin.review.approve` / `.reject`・`admin.matrix.rebuild` | admin/index.tsx（書込み系アクションのみ。閲覧はログしない） | theaterId, sourceRunId, force, from/to, reviewId, written |
 | `reap.done` | /admin ダッシュボード読込時 | count, runIds（孤児 run 掃除の記録） |

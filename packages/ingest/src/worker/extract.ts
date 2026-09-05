@@ -1,4 +1,4 @@
-import { ExtractedDateList, type ExtractionResult, type ExtractMethod } from '@cinema/shared'
+import type { ExtractionResult, ExtractMethod } from '@cinema/shared'
 import {
   buildTextV1SystemPrompt,
   buildTextV1UserText,
@@ -14,7 +14,7 @@ import { buildVisionV1SystemPrompt, VISION_V1_VERSION } from '../extraction/prom
 import type { ExtractInput, ImagePart, LlmEnv } from '../llm'
 import { createLlmClient, stripJsonFence } from '../llm'
 import { errorFields, logError, logInfo } from '../log'
-import { parseExtraction } from './validate'
+import { parseDateList, parseExtraction } from './validate'
 
 export class ExtractionParseError extends Error {
   constructor(
@@ -93,23 +93,36 @@ export async function extractText(
   )
 }
 
-// docs/spec/06 §7 のリトライ予算。LLM API エラー（client.extract 自体の失敗）と
-// JSON パース不能/zod NG（LLM の出力が壊れていた場合）は別予算。
+// docs/spec/06 §7 のリトライ予算。種別ごとに独立（ADR-0023）。
 // いずれも fetch 済みの入力（メモリ上）を使い回すだけで再取得はしない。
+// - LLM API エラー（client.extract 自体の失敗）: 一時的な 429/503/timeout は再試行で救える
+// - JSON パース不能: 出力の途中切れは確率的に起きるため再試行で救える
+// - zod NG（封筒）: temperature 0 では同一プロンプトの再送＝同一出力なのでリトライしない。
+//   行単位の NG はそもそも parseExtraction が捨てて通すため、ここには来ない。
 const LLM_API_MAX_RETRIES = 2
-const MALFORMED_OUTPUT_MAX_RETRIES = 1
+const PARSE_ERROR_MAX_RETRIES = 1
 
 export interface ExtractWithRetriesResult {
   ext: ExtractOutcome
   result: ExtractionResult
+  // 抽出に失敗して見送った日（ADR-0023）。洗い替え範囲から除外して既存データを守るため、
+  // pipeline / reextract が書込関数へ渡す。日別コールを持たない経路では undefined。
+  skippedDates?: string[]
 }
 
 // 予算切れの最終エラーは経緯を前置して投げ直す。D1 の error_message（管理画面）だけで
 // 「何をどれだけ試して失敗したか」が読めるように（feat/ingest-observability・docs/spec/06 §7）。
-function budgetExhausted(e: unknown, apiFailures: number, malformedFailures: number): Error {
+interface FailureCounts {
+  api: number
+  parse: number
+  schema: number
+}
+
+function budgetExhausted(e: unknown, f: FailureCounts): Error {
   const detail = e instanceof Error ? e.message : String(e)
+  const calls = f.api + f.parse + f.schema
   return new Error(
-    `抽出リトライ予算切れ（LLM呼出${apiFailures + malformedFailures}回: APIエラー${apiFailures}・出力不正${malformedFailures}）: ${detail.slice(0, 500)}`,
+    `抽出リトライ予算切れ（LLM呼出${calls}回: APIエラー${f.api}・JSON不正${f.parse}・スキーマNG${f.schema}）: ${detail.slice(0, 500)}`,
   )
 }
 
@@ -121,9 +134,8 @@ async function withRetries<T>(
   parse: (parsed: unknown) => T,
 ): Promise<{ ext: ExtractOutcome; result: T }> {
   let apiRetriesLeft = LLM_API_MAX_RETRIES
-  let malformedRetriesLeft = MALFORMED_OUTPUT_MAX_RETRIES
-  let apiFailures = 0
-  let malformedFailures = 0
+  let parseRetriesLeft = PARSE_ERROR_MAX_RETRIES
+  const failures: FailureCounts = { api: 0, parse: 0, schema: 0 }
 
   for (;;) {
     let ext: ExtractOutcome
@@ -133,37 +145,34 @@ async function withRetries<T>(
       // 抽出デッドライン超過（ADR-0017）はリトライ対象外: 予算を消費せず即時打ち切り
       if (e instanceof ExtractionDeadlineError) throw e
       if (e instanceof ExtractionParseError) {
-        malformedFailures++
-        if (malformedRetriesLeft > 0) {
-          malformedRetriesLeft--
-          logInfo('llm.retry', { kind: 'parse', malformedRetriesLeft, error: errorFields(e) })
+        failures.parse++
+        if (parseRetriesLeft > 0) {
+          parseRetriesLeft--
+          logInfo('llm.retry', { kind: 'parse', parseRetriesLeft, error: errorFields(e) })
           continue
         }
-        logError('llm.giveup', e, { kind: 'parse', apiFailures, malformedFailures })
-        throw budgetExhausted(e, apiFailures, malformedFailures)
+        logError('llm.giveup', e, { kind: 'parse', ...failures })
+        throw budgetExhausted(e, failures)
       }
-      apiFailures++
+      failures.api++
       if (apiRetriesLeft > 0) {
         apiRetriesLeft--
         // API 呼出自体の失敗詳細（timeout/http/network・ms・status）は llm.call.fail 済み
         logInfo('llm.retry', { kind: 'api', apiRetriesLeft, error: errorFields(e) })
         continue
       }
-      logError('llm.giveup', e, { kind: 'api', apiFailures, malformedFailures })
-      throw budgetExhausted(e, apiFailures, malformedFailures)
+      logError('llm.giveup', e, { kind: 'api', ...failures })
+      throw budgetExhausted(e, failures)
     }
     try {
       const result = parse(ext.parsed)
       return { ext, result }
     } catch (zodErr) {
-      malformedFailures++
-      if (malformedRetriesLeft > 0) {
-        malformedRetriesLeft--
-        logInfo('llm.retry', { kind: 'schema', malformedRetriesLeft, error: errorFields(zodErr) })
-        continue
-      }
-      logError('llm.giveup', zodErr, { kind: 'schema', apiFailures, malformedFailures })
-      throw budgetExhausted(zodErr, apiFailures, malformedFailures)
+      // スキーマ NG はリトライしない（ADR-0023）。temperature 0 で同一プロンプトを
+      // 再送しても同じ出力が返るだけで、トークンと時間を消費して必ず同じ失敗になる。
+      failures.schema++
+      logError('llm.giveup', zodErr, { kind: 'schema', ...failures })
+      throw budgetExhausted(zodErr, failures)
     }
   }
 }
@@ -258,7 +267,7 @@ export async function extractTextDaySplit(
           'text',
         ),
       ),
-      (p) => ExtractedDateList.parse(p),
+      parseDateList,
     ),
   )
   outcomes.push(discovery.ext)
@@ -281,7 +290,7 @@ export async function extractTextDaySplit(
   }
 
   // 2) 日別抽出コール（発見した日付ごとに1回。入力は同一テキスト・基準日は取込日のまま）
-  const screenings = await extractDayUnits(
+  const days = await extractDayUnits(
     env,
     dates.map((date) => ({ date, text: preprocessedText, url: scheduleUrl })),
     {
@@ -292,7 +301,7 @@ export async function extractTextDaySplit(
     },
     { guarded, now, notes, outcomes, onDeadline: 'throw' },
   )
-  return mergeDayResults(fallbackBusinessDate, screenings, notes, outcomes)
+  return mergeDayResults(fallbackBusinessDate, days, notes, outcomes)
 }
 
 // 複数日取得（ADR-0019・docs/spec/06 §2.2）の抽出。文書ごとに日付が既知のため
@@ -325,16 +334,16 @@ export async function extractTextPerDocument(
   if (docs.length === 0) {
     // 取得できた日が無い（タブを全て取り逃した等）。LLM は呼ばず 0件 + notes で成功させる
     notes.push('複数日取得で有効な文書が0件のため上映0件(ADR-0019)')
-    return mergeDayResults(fallbackBusinessDate, [], notes, [])
+    return mergeDayResults(fallbackBusinessDate, { screenings: [], skippedDates: [] }, notes, [])
   }
 
-  const screenings = await extractDayUnits(
+  const days = await extractDayUnits(
     env,
     docs,
     { systemPrompt, businessMonth, basisDateOf: (date) => date, label: '複数日取得' },
     { guarded, now, notes, outcomes, onDeadline: 'stop' },
   )
-  return mergeDayResults(fallbackBusinessDate, screenings, notes, outcomes)
+  return mergeDayResults(fallbackBusinessDate, days, notes, outcomes)
 }
 
 // --- 日分割・複数日取得の共通下回り ---
@@ -397,8 +406,11 @@ async function extractDayUnits(
     outcomes: ExtractOutcome[]
     onDeadline: 'throw' | 'stop'
   },
-): Promise<ExtractionResult['screenings']> {
+): Promise<{ screenings: ExtractionResult['screenings']; skippedDates: string[] }> {
   const screenings: ExtractionResult['screenings'] = []
+  // 抽出できなかった日。洗い替え範囲から外して既存データを守る（ADR-0023）。
+  const skippedDates: string[] = []
+  let lastError: unknown = null
   for (const [i, unit] of units.entries()) {
     const t = ctx.now()
     let day: { ext: ExtractOutcome; result: ExtractionResult }
@@ -427,12 +439,23 @@ async function extractDayUnits(
         ),
       )
     } catch (e) {
-      // 部分成功を許す経路のみ、1日以上取れていればそこで打ち切る（未取得日は洗い替え範囲外）
-      if (e instanceof ExtractionDeadlineError && ctx.onDeadline === 'stop' && i > 0) {
-        ctx.notes.push(`デッドライン到達により${i}/${units.length}日で打ち切り(${prompt.label})`)
-        break
+      if (e instanceof ExtractionDeadlineError) {
+        // 部分成功を許す経路のみ、1日以上取れていればそこで打ち切る（未取得日は洗い替え範囲外）
+        if (ctx.onDeadline === 'stop' && i > 0) {
+          ctx.notes.push(`デッドライン到達により${i}/${units.length}日で打ち切り(${prompt.label})`)
+          for (const rest of units.slice(i)) skippedDates.push(rest.date)
+          break
+        }
+        throw e
       }
-      throw e
+      // 日別コールの失敗はその日だけ見送って続行する（ADR-0023）。1日の不正で
+      // 先に成功した他の日まで捨てないための分岐。全日失敗なら下で throw する。
+      const msg = e instanceof Error ? e.message : String(e)
+      ctx.notes.push(`${unit.date}: 抽出失敗のため見送り(${prompt.label}): ${msg.slice(0, 200)}`)
+      logError('extract.day.skip', e, { date: unit.date, label: prompt.label })
+      skippedDates.push(unit.date)
+      lastError = e
+      continue
     }
     ctx.outcomes.push(day.ext)
     const kept = day.result.screenings.filter((sc) => sc.date == null || sc.date === unit.date)
@@ -449,19 +472,23 @@ async function extractDayUnits(
       outTokens: day.ext.outTokens,
     })
   }
-  return screenings
+  // 全日が失敗したら run 全体を失敗させる（0件で洗い替えて既存データを消さないため）
+  if (units.length > 0 && skippedDates.length === units.length && lastError !== null) {
+    throw lastError
+  }
+  return { screenings, skippedDates }
 }
 
 // 全日の結果を1つの ExtractionResult にまとめ、トークンを合算する（呼出側の契約は一括抽出と同一）。
 function mergeDayResults(
   fallbackBusinessDate: string,
-  screenings: ExtractionResult['screenings'],
+  days: { screenings: ExtractionResult['screenings']; skippedDates: string[] },
   notes: string[],
   outcomes: ExtractOutcome[],
 ): ExtractWithRetriesResult {
   const result: ExtractionResult = {
     businessDate: fallbackBusinessDate,
-    screenings,
+    screenings: days.screenings,
     notes: notes.length > 0 ? notes.join(' / ').slice(0, 1000) : null,
   }
   const ext: ExtractOutcome = {
@@ -472,5 +499,5 @@ function mergeDayResults(
     inTokens: sumTokens(outcomes.map((o) => o.inTokens)),
     outTokens: sumTokens(outcomes.map((o) => o.outTokens)),
   }
-  return { ext, result }
+  return { ext, result, skippedDates: days.skippedDates }
 }

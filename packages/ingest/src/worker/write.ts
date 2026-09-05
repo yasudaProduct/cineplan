@@ -16,6 +16,8 @@ export async function normalizeResolveWrite(
   result: ExtractionResult,
   coverageFloor: string,
   scheduleUrl: string,
+  // 抽出に失敗して見送った日（ADR-0023）。洗い替え範囲から除外して既存データを守る。
+  skipDates: string[] = [],
 ): Promise<number> {
   const pre = normalize(result, scheduleUrl)
   const rows: NormalizedScreening[] = []
@@ -32,5 +34,5 @@ export async function normalizeResolveWrite(
       detailUrl: p.detailUrl,
     })
   }
-  return replaceScreeningsByDate(db, theaterId, runId, rows, coverageFloor)
+  return replaceScreeningsByDate(db, theaterId, runId, rows, coverageFloor, skipDates)
 }

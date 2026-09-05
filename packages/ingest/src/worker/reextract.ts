@@ -186,7 +186,7 @@ export async function reextractFromSnapshot(env: Env, sourceRunId: string): Prom
     )
     return { runId, status: 'extraction_failed', theaterId: theater.id, error: msg }
   }
-  const { ext, result } = outcome
+  const { ext, result, skippedDates } = outcome
   logInfo('run.extract.ok', {
     runId,
     theaterId: theater.id,
@@ -195,6 +195,10 @@ export async function reextractFromSnapshot(env: Env, sourceRunId: string): Prom
     inTokens: ext.inTokens,
     outTokens: ext.outTokens,
     screenings: result.screenings.length,
+    skippedDates: skippedDates ?? [],
+    // 成功 run の notes は D1 に残らない（ingest_runs に列が無い）ため、
+    // 行落とし・日見送りの記録はここが唯一の追跡手段になる（ADR-0023）。
+    notes: result.notes?.slice(0, 500) ?? null,
   })
 
   const avgCount = await recentAvgCount(env.DB, theater.id)
@@ -235,6 +239,7 @@ export async function reextractFromSnapshot(env: Env, sourceRunId: string): Prom
     result,
     snapshotDate,
     theater.scheduleUrl,
+    skippedDates,
   )
   await completeRun(env.DB, runId, {
     snapshotKey: source.snapshot_key,

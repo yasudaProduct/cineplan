@@ -65,12 +65,17 @@ function enumerateDates(fromIso: string, toIso: string): string[] {
 // 抽出0件の日・今回の抽出に現れなかった日も含めて DELETE することで、休館日や
 // 上映が無くなった日の古い screenings が残り続ける（stale データ）のを防ぐ。
 // 抽出結果が完全に空の場合は coverageFloor 1日分のみを洗い替える（最低限のフロア）。
+//
+// skipDates は「抽出に失敗して見送った日」（ADR-0023・docs/spec/03 §7）。その日は
+// 「上映が無い」ではなく「今回は分からなかった」なので coverage から除外する。
+// 含めると DELETE だけされて INSERT が無く、既存データを失う。
 export async function replaceScreeningsByDate(
   db: D1Database,
   theaterId: string,
   runId: string,
   rows: NormalizedScreening[],
   coverageFloor: string,
+  skipDates: string[] = [],
 ): Promise<number> {
   const byDate = new Map<string, NormalizedScreening[]>()
   for (const r of rows) {
@@ -80,7 +85,12 @@ export async function replaceScreeningsByDate(
   }
 
   const allDates = [coverageFloor, ...byDate.keys()].sort()
-  const coverageDates = enumerateDates(allDates[0], allDates[allDates.length - 1])
+  // 見送った日に抽出行がある状態は起きない（見送り＝その日の結果が無い）が、
+  // 万一同時に来たら書込側を優先し除外しない（DELETE 無しの INSERT で重複するのを防ぐ）。
+  const skip = new Set(skipDates.filter((d) => !byDate.has(d)))
+  const coverageDates = enumerateDates(allDates[0], allDates[allDates.length - 1]).filter(
+    (d) => !skip.has(d),
+  )
 
   const stmts: D1PreparedStatement[] = coverageDates.map((date) =>
     db

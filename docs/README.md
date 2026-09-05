@@ -60,7 +60,7 @@
 
 ### decisions/ — 設計判断（ADR）
 
-一覧と運用ルールは `decisions/README.md`。ADR-0001〜0020 まで記録済み。
+一覧と運用ルールは `decisions/README.md`。ADR-0001〜0023 まで記録済み。
 
 ### guides/ — 手順書
 

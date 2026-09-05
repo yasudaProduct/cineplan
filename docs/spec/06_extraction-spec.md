@@ -85,6 +85,12 @@ export const ExtractionResult = z.object({
   screenings: z.array(ExtractedScreening),
   notes: z.string().nullish(),            // LLM が気付いた異常（"休館日と記載" 等）
 });
+
+// 行単位の寛容パース用（§5「行単位のスキーマ NG」）。封筒（businessDate/notes）は
+// 厳格に、screenings は要素ごとに個別検証するため未検証のまま受ける。
+export const ExtractionResultLoose = ExtractionResult.extend({
+  screenings: z.array(z.unknown()),
+});
 ```
 
 - 各 screening の実効 businessDate は `screening.date ?? ExtractionResult.businessDate`。正規化（§6）でこの日付を使って UTC 化し、businessDate 別に洗い替える。
@@ -186,6 +192,16 @@ user（日別抽出コール。responseFormat='extraction' → ExtractionResult 
 
 ## 5. 検証（Validation）
 
+### 5.0 zod スキーマ検証（行単位の寛容パース。ADR-0023）
+
+**封筒（`businessDate` / `notes` / `screenings` が配列であること）は厳格に検証し、`screenings` は要素ごとに検証して NG 行だけを捨てる。** 捨てた行は理由と実値を `notes` に追記し（後段の V1・レビュー・`ingest_runs.error_message` から追える）、残った行で先へ進む。封筒が NG のときのみ `extraction_failed`。
+
+- 理由: **1行の不正で run 全体が落ちると、同じ呼出で正しく取れた他の行・他の日まで全部失われる**。実害として大阪ステーションシネマの週間表にある「上映時刻未確定セル = `未定`」を LLM が `startTime` にそのまま載せ、`TIME_RE` 逸脱で run 全体が `extraction_failed` になる事故が 2026-08-19〜09-06 に4回発生した（ADR-0023）。プロンプト（`text_v3`）は「具体的な HH:MM が無い上映は出力せず notes に記せ」と明示しているが LLM の遵守は不安定で、プロンプトだけを防御線にはできない。
+- **捨てすぎの防御は V2（`COUNT_ANOMALY`）が担う。** 行落としで件数が過去平均の 50% を割れば `validation_failed` としてレビューキューに入り、D1 は書き換わらない。したがって「静かに大量欠損したまま洗い替える」ことは起きない。
+- **エラーメッセージには必ず実値を添える。** ZodError の issue は `received` を含まないため、`issue.path` から実値を引いて `screenings[0].startTime="未定"` の形にする。値が分からないと調査のたびに R2 スナップショットを取りに行くことになる（上記4回の再発が実際にそうだった）。`log.ts` のガードレール（生出力本文をログに載せない）に従い、載せるのは**当該フィールドの値のみ・40字まで・先頭5件まで**とする。
+
+### 5.1 妥当性検証
+
 zod 検証通過後、以下の妥当性検証を行う。1つでも NG なら `validation_failed` としてレビューキューへ（D1 には書き込まない）。
 
 | # | ルール | NG コード |
@@ -220,14 +236,19 @@ zod 検証通過後、以下の妥当性検証を行う。1つでも NG なら `
 |---|---|---|---|
 | HTTP 取得失敗 / タイムアウト | `fetch_failed` | Queues 標準リトライ 3回（指数バックオフ、初回 5分後） | 3回失敗で Slack |
 | LLM API エラー | `extraction_failed` | 2回（R2 スナップショットから再抽出。再取得はしない） | 2回失敗で Slack |
-| JSON パース不能 / zod NG | `extraction_failed` | 1回（同一入力・同一プロンプトで再試行し、確率的失敗のみ救済） | 失敗継続で Slack |
+| JSON パース不能 | `extraction_failed` | 1回（出力途中切れは確率的に起きるため再試行で救える） | 失敗継続で Slack |
+| zod NG（封筒） | `extraction_failed` | **なし**（ADR-0023） | 即 Slack |
+| zod NG（行単位） | — | — | 行を捨てて notes に記録し続行（§5.0） |
 | 妥当性検証 NG | `validation_failed` | 自動リトライなし | Slack + レビューキュー |
+
+**zod NG をリトライしない理由（ADR-0023）**: 抽出呼出は `temperature: 0` で、リトライは同一プロンプトの再送でしかない（検証エラーをプロンプトに戻していない）。実測でも 2026-09-03・09-06 の失敗はいずれも「LLM呼出2回・出力不正2」＝2回とも同一の不正出力で、リトライがトークンと時間を消費しただけだった。行単位 NG は §5.0 で捨てて先へ進むため、そもそもリトライの出番が無い。JSON パース不能（出力の途中切れ）は再試行で結果が変わりうるため 1回を維持する。
 
 **再取得（先方サイトへの再アクセス）を伴うリトライは fetch_failed のみ。** それ以外は必ず R2 スナップショットを入力にする（N-06 の取得マナー遵守）。
 
 実装（`packages/ingest/src/worker/`）:
 - **fetch_failed**: Queue redelivery を利用する（Worker 側で意図的な再取得は行わない）。`queue()` consumer が `msg.attempts`（1始まり）を見て `msg.attempts < 3` なら `msg.retry({ delaySeconds })`（指数バックオフ: `300 * 2^(attempts-1)` 秒 = 5分・10分…）、`attempts >= 3` で `msg.ack()`（打ち切り）。Slack 通知は 3回目到達時のみ（`fail.ts` の `silent` フラグで attempts<3 は抑止）。管理サイト UI の手動取込（`trigger='manual'`）も **Queue に投入して cron と同じ consumer 経路で処理する**（後述の理由により fetch_failed の Queue 標準リトライも同様に適用される）。curl 直叩き用の `POST /admin/ingest`（P1-6 由来。スクリプト用途で即座に結果を返す契約）のみ Queue を経由せず同期実行のまま。
-- **LLM API エラー / JSON パース不能 / zod NG**: 同一 Worker 呼出内で `extractVisionWithRetries` / `extractTextDaySplit`（`extract.ts`）がループでリトライする。fetch 済みの入力（メモリ上・R2 保存済み）を使い回すため再取得しない。LLM API エラー（`client.extract()` 自体の throw）は最大2回、JSON パース不能（`ExtractionParseError`）と zod NG（スキーマ `.parse` の throw）は合算で最大1回（表の2行は同一予算を共有）。**このリトライ予算は LLM 呼出1回ごとに適用される**（text の日単位分割では日付発見コール・各日別コールがそれぞれ独立の予算を持つ。ADR-0017）。いずれかの呼出が予算を使い切った時点で run 全体を `extraction_failed` に確定し Slack 通知する（試行ごとには通知しない）。
+- **LLM API エラー / JSON パース不能 / zod NG**: 同一 Worker 呼出内で `extractVisionWithRetries` / `extractTextDaySplit`（`extract.ts`）がループでリトライする。fetch 済みの入力（メモリ上・R2 保存済み）を使い回すため再取得しない。LLM API エラー（`client.extract()` 自体の throw）は最大2回、JSON パース不能（`ExtractionParseError`）は最大1回、**zod NG（封筒）はリトライしない**（ADR-0023。予算は種別ごとに独立）。**このリトライ予算は LLM 呼出1回ごとに適用される**（text の日単位分割では日付発見コール・各日別コールがそれぞれ独立の予算を持つ。ADR-0017）。いずれかの呼出が予算を使い切った時点でその**日**を失敗とする（run 全体の扱いは次項）。
+- **日別コールの失敗は run 全体を落とさない（ADR-0023）**: text 日分割・複数日取得のいずれも、ある日の抽出が失敗したらその日を**スキップして notes に記録し、残りの日を続行**する。**全日が失敗したときのみ** run を `extraction_failed` に確定して Slack 通知する。スキップした日は洗い替え範囲（`replaceScreeningsByDate` の coverage）から除外するため、**その日の既存データは消えずに残る**（部分成功で古いデータを失わないことがこの設計の要点）。日付発見コールの失敗は依然 run 全体の失敗（対象日が1つも決まらないため）。
 - **抽出デッドライン（text 日分割・ADR-0017）**: 分割により run の抽出合計時間が伸びる（正常時 4〜8分）ため、run 内の抽出開始から **10分** のデッドラインを設け、各 LLM 呼出の前に判定する（超過時は `extraction_failed`。error_message に処理済み日数を残す）。Queue consumer の実行上限（約15分/起動）の内側に必ず収めるための安全弁。
 - **複数日取得（ADR-0019）の fetch 失敗と run 予算**: `url_template` の**初日**の取得失敗は `fetch_failed`（URL 設定ミスを黙って通さない）、2日目以降の失敗はその日をスキップして notes に記録し続行する（先行販売未掲載の日が404を返す等は正常）。`tabs` はタブが見つからない／内容が変化しない日をスキップして notes に記録する。fetch 自体は抽出デッドラインの外側で時間を使うため、pipeline は run 全体の予算（12分）から経過時間を差し引いて抽出デッドラインを算出して渡す。**複数日取得では1日以上成功していればデッドライン到達で打ち切って部分結果を返す**（未取得日は洗い替え範囲に入らないため既存データは消えない）。0日なら単日経路と同じく `extraction_failed`。
 - **手動取込・再抽出を Queue 経由にした理由（孤児run バグの修正）**: 管理サイト UI の「取込を実行」「このスナップショットで再抽出」はいずれもブラウザの HTTP リクエストに処理を同期させていたため、rendered＋LLM抽出（リトライ込みで数十秒〜数分）の途中でタブを閉じる／通信が切れると、Cloudflare Workers がレスポンス未送信のまま実行をキャンセルし、`status='extracting'` で `finished_at` が入らない孤児 run が発生していた（`ctx.waitUntil()` はレスポンス送信後 **最大30秒** しか延長できないため単純な早期return対応では不十分。実機で確認）。Queue consumer はブラウザ接続に紐づかないため、cron と同じ経路に乗せることで解消する。**当初は再抽出を「先方サイトへのアクセスが無く比較的短時間で終わる」として対象外にしていたが、大きな rendered ページ（テアトル梅田等）では抽出そのもの（Gemini呼出のリトライ）だけで数分かかることが実機で判明し、再抽出にも同じ孤児化が起きたため対象を拡張した**（2026-07-19）。Queue メッセージは `{theaterId, trigger}`（取込）と `{reextractRunId}`（再抽出）の2形を受け付ける。

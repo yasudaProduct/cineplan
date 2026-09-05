@@ -32,6 +32,15 @@ export const ExtractionResult = z.object({
 })
 export type ExtractionResult = z.infer<typeof ExtractionResult>
 
+// 行単位の寛容パース用（docs/spec/06 §5.0・ADR-0023）。封筒（businessDate/notes と
+// screenings が配列であること）だけを検証し、要素は未検証のまま受ける。呼び出し側
+// （ingest の parseExtraction）が ExtractedScreening で1件ずつ検証し、NG 行を捨てる。
+// 1行の不正で run 全体を落とすと、同じ呼出で正しく取れた他の行まで失われるため。
+export const ExtractionResultLoose = ExtractionResult.extend({
+  screenings: z.array(z.unknown()),
+})
+export type ExtractionResultLoose = z.infer<typeof ExtractionResultLoose>
+
 // text 日単位分割の日付発見コールの出力（docs/spec/06 §1・§4 text_v2・ADR-0017）。
 export const ExtractedDateList = z.object({
   dates: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)), // ページに上映掲載がある営業日

@@ -1,5 +1,10 @@
-import type { ExtractionResult as ExtractionResultT, ValidationCode } from '@cinema/shared'
-import { ExtractionResult } from '@cinema/shared'
+import type {
+  ExtractedDateList as ExtractedDateListT,
+  ExtractedScreening as ExtractedScreeningT,
+  ExtractionResult as ExtractionResultT,
+  ValidationCode,
+} from '@cinema/shared'
+import { ExtractedDateList, ExtractedScreening, ExtractionResultLoose } from '@cinema/shared'
 import { inBusinessWindow, type PreNormalized } from './normalize'
 
 export interface ValidationNg {
@@ -7,9 +12,108 @@ export interface ValidationNg {
   detail: string
 }
 
-// zod 検証（docs/spec/06 §5）。失敗（ZodError）は呼び出し側で extraction_failed 扱い。
+// ---- zod 検証（docs/spec/06 §5.0・ADR-0023）----
+
+// スキーマ検証の失敗。temperature 0 では再送しても同じ出力になるためリトライしない
+// （extract.ts の withRetries が種別で分岐する。ADR-0023）。
+export class ExtractionSchemaError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ExtractionSchemaError'
+  }
+}
+
+// ZodError の issue は received 値を含まない。値が分からないと error_message だけでは
+// 原因が特定できず、毎回 R2 スナップショットを取りに行くことになる（大阪ステーションシネマの
+// "未定" が4回再発したときが実際にそうだった）。issue.path から実値を引いて添える。
+// log.ts のガードレール（LLM 生出力の本文はログに載せない）に従い、載せるのは
+// 当該フィールドの値のみ・40字まで・先頭5件まで。
+const MAX_VALUE_CHARS = 40
+const MAX_REPORTED_ISSUES = 5
+
+// ZodIssue のうちここで使う部分だけの構造型。@cinema/ingest は zod に直接依存しない
+// （zod スキーマは packages/shared が唯一の真実。CLAUDE.md モノレポ構成）。
+export interface SchemaIssue {
+  path: PropertyKey[]
+  code: string
+  validation?: unknown
+}
+
+function valueAtPath(root: unknown, path: PropertyKey[]): unknown {
+  let cur: unknown = root
+  for (const key of path) {
+    if (cur === null || typeof cur !== 'object') return undefined
+    cur = (cur as Record<PropertyKey, unknown>)[key]
+  }
+  return cur
+}
+
+function formatValue(v: unknown): string {
+  if (v === undefined) return '(欠落)'
+  let s: string
+  try {
+    s = JSON.stringify(v) ?? String(v)
+  } catch {
+    s = String(v)
+  }
+  return s.length > MAX_VALUE_CHARS ? `${s.slice(0, MAX_VALUE_CHARS)}…` : s
+}
+
+function pathLabel(path: PropertyKey[]): string {
+  return path
+    .map((k) => (typeof k === 'number' ? `[${k}]` : `.${String(k)}`))
+    .join('')
+    .replace(/^\./, '')
+}
+
+// issue 一覧を「パス=実値(コード)」の読める1行にする。prefix は行単位検証で
+// 親配列の添字（'screenings[3].'）を前置するために使う。
+export function describeZodIssues(root: unknown, issues: SchemaIssue[], prefix = ''): string {
+  const shown = issues.slice(0, MAX_REPORTED_ISSUES).map((i) => {
+    const label = pathLabel(i.path) || '(ルート)'
+    const kind = 'validation' in i ? `${i.code}:${String(i.validation)}` : i.code
+    return `${prefix}${label}=${formatValue(valueAtPath(root, i.path))}(${kind})`
+  })
+  const rest = issues.length - shown.length
+  return shown.join(', ') + (rest > 0 ? ` ほか${rest}件` : '')
+}
+
+// zod 検証（docs/spec/06 §5.0）。封筒（businessDate/notes・screenings が配列であること）は
+// 厳格に検証し、screenings は1件ずつ検証して NG 行だけを捨てる。捨てた行は理由と実値を
+// notes に追記して続行する（1行の不正で run 全体を落とすと、同じ呼出で正しく取れた他の行・
+// 他の日まで失われるため。ADR-0023）。捨てすぎは後段の V2 COUNT_ANOMALY が拾う。
+// 封筒が NG のときのみ throw（呼び出し側で extraction_failed 確定）。
 export function parseExtraction(parsed: unknown): ExtractionResultT {
-  return ExtractionResult.parse(parsed)
+  const env = ExtractionResultLoose.safeParse(parsed)
+  if (!env.success) {
+    throw new ExtractionSchemaError(
+      `抽出結果の形が不正: ${describeZodIssues(parsed, env.error.issues)}`,
+    )
+  }
+  const envelope = env.data
+  const kept: ExtractedScreeningT[] = []
+  const dropped: string[] = []
+  for (const [i, row] of envelope.screenings.entries()) {
+    const r = ExtractedScreening.safeParse(row)
+    if (r.success) {
+      kept.push(r.data)
+      continue
+    }
+    if (dropped.length < MAX_REPORTED_ISSUES) {
+      dropped.push(describeZodIssues(row, r.error.issues, `screenings[${i}].`))
+    }
+  }
+  const droppedTotal = envelope.screenings.length - kept.length
+  if (droppedTotal === 0) return { ...envelope, screenings: kept }
+
+  const detail = dropped.join(', ')
+  const rest = droppedTotal - dropped.length
+  const note = `スキーマ不正の${droppedTotal}件を除外: ${detail}${rest > 0 ? ` ほか${rest}件` : ''}`
+  return {
+    ...envelope,
+    screenings: kept,
+    notes: envelope.notes ? `${envelope.notes} / ${note}` : note,
+  }
 }
 
 // 妥当性検証 V1/V2/V5/V6（正規化前）。1つでも NG なら返す（null=通過）。
@@ -106,4 +210,16 @@ function validateScreenOverlap(rows: PreNormalized[]): ValidationNg | null {
     }
   }
   return null
+}
+
+// 日付発見コール（text 日分割・ADR-0017）の検証。ExtractedDateList は行落としの対象外
+// （対象日が決まらないと日別コールを組み立てられないため全体失敗）。実値だけ添える。
+export function parseDateList(parsed: unknown): ExtractedDateListT {
+  const r = ExtractedDateList.safeParse(parsed)
+  if (!r.success) {
+    throw new ExtractionSchemaError(
+      `日付一覧の形が不正: ${describeZodIssues(parsed, r.error.issues)}`,
+    )
+  }
+  return r.data
 }
