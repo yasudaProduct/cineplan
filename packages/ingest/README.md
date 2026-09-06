@@ -54,6 +54,7 @@ Cron（st。prod は構築保留・ADR-0021）/ 手動トリガー（dev・st）
 | `extract.day.skip` | 〃（その日の抽出に失敗し見送り。ADR-0023） | date, label, error |
 | `extract.deadline.exceeded` | 〃（抽出デッドライン超過で打ち切り） | elapsedMs, deadlineMs, doneDays, totalDays |
 | `admin.enqueue.ingest` / `.reextract`・`admin.ingest.sync`・`admin.theater.status`・`admin.review.approve` / `.reject`・`admin.matrix.rebuild` | admin/index.tsx（書込み系アクションのみ。閲覧はログしない） | theaterId, sourceRunId, force, from/to, reviewId, written |
+| `write.dedup` | db/screenings.ts（UNIQUE キー重複を畳んだとき。ADR-0024） | theaterId, runId, collapsed, of |
 | `reap.done` | /admin ダッシュボード読込時 | count, runIds（孤児 run 掃除の記録） |
 | `matrix.pair.fail` / `.empty`・`matrix.done` | cron/travel-matrix.ts | pair, kind, status / theaters, pairs, updated, carried, missing, ms |
 | `slack.fail` | worker/notify.ts | status（通知失敗の可視化。本処理は止めない） |

@@ -183,3 +183,56 @@ describe('replaceScreeningsByDate — 見送った日を洗い替え範囲から
     expect(getRows().map((r) => r.movieId)).toEqual(['mov_1'])
   })
 })
+
+// ADR-0024 の回帰テスト: スクリーン名を公開しない劇場は、同一作品の同時刻並行上映が
+// UNIQUE (theater_id, business_date, movie_id, start_at, screen_name) の同一キーになる。
+// 畳まずに INSERT すると UNIQUE 違反で batch() 全体が落ち、洗い替えも承認も失敗する。
+describe('replaceScreeningsByDate — UNIQUE キー重複を畳む（ADR-0024）', () => {
+  it('同一 (日付・作品・開始時刻・スクリーン) の行は1件に畳む', async () => {
+    const { db, getRows } = createFakeDb([])
+    const dup = screening('2026-09-06', 'mov_live')
+    const written = await replaceScreeningsByDate(
+      db,
+      'thr_a',
+      'run_1',
+      [dup, { ...dup }, screening('2026-09-06', 'mov_other')],
+      '2026-09-06',
+    )
+    expect(written).toBe(2)
+    expect(
+      getRows()
+        .map((r) => r.movieId)
+        .sort(),
+    ).toEqual(['mov_live', 'mov_other'])
+  })
+
+  it('スクリーン名が異なれば畳まない（多スクリーン館の並行上映は別行）', async () => {
+    const { db, getRows } = createFakeDb([])
+    const base = screening('2026-09-06', 'mov_live')
+    const written = await replaceScreeningsByDate(
+      db,
+      'thr_a',
+      'run_1',
+      [
+        { ...base, screenName: 'スクリーン1' },
+        { ...base, screenName: 'スクリーン2' },
+      ],
+      '2026-09-06',
+    )
+    expect(written).toBe(2)
+    expect(getRows()).toHaveLength(2)
+  })
+
+  it('開始時刻が違えば畳まない', async () => {
+    const { db } = createFakeDb([])
+    const base = screening('2026-09-06', 'mov_live')
+    const written = await replaceScreeningsByDate(
+      db,
+      'thr_a',
+      'run_1',
+      [base, { ...base, startAt: '2026-09-06T05:00:00.000Z' }],
+      '2026-09-06',
+    )
+    expect(written).toBe(2)
+  })
+})

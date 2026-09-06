@@ -138,8 +138,9 @@ describe('validateExtracted (V1/V2/V5/V6)', () => {
     ]
     expect(validateExtracted(result(rows), { avgCount: 10 })?.code).toBe('COUNT_ANOMALY')
   })
-  it('V5: 同一(date,title,startTime)重複で DUPLICATE_ROW', () => {
-    const dup = sc({ movieTitle: 'A', startTime: '10:00' })
+  // ADR-0024: screenName を公開する劇場でのみ V5 は効く（非公開館は下の describe を参照）
+  it('V5: 同一(date,title,startTime,screen)重複で DUPLICATE_ROW', () => {
+    const dup = sc({ movieTitle: 'A', startTime: '10:00', screenName: 'シアター１' })
     expect(validateExtracted(result([dup, { ...dup }]), {})?.code).toBe('DUPLICATE_ROW')
   })
   it('V5: 同時刻同作品でもスクリーンが違えば重複でない（多スクリーン・migration 0003）', () => {
@@ -434,5 +435,43 @@ describe('validateExtracted — notes が undefined のケース（review指摘#
     }
     const parsed = parseExtraction(raw)
     expect(validateExtracted(parsed, {})).toBeNull()
+  })
+})
+
+// ADR-0024 の回帰テスト: 大阪ステーションシネマはスクリーン名を公開しないため、
+// ライブ・ビューイングの2スクリーン並行上映が同一行に見える。これを V5 で弾くと
+// 取込も承認もできなくなる（承認は UNIQUE 違反で落ちる）。V7 と同じ carve-out を入れる。
+describe('validateExtracted V5 — screenName 非公開館のスキップ（ADR-0024）', () => {
+  const dup = (screenName: string | null) => [
+    sc({
+      movieTitle: '水曜どうでしょう祭UNITE2026 ライブ・ビューイング',
+      startTime: '17:30',
+      screenName,
+    }),
+    sc({
+      movieTitle: '水曜どうでしょう祭UNITE2026 ライブ・ビューイング',
+      startTime: '17:30',
+      screenName,
+    }),
+  ]
+
+  it('screenName が null（未公開）の同一行は DUPLICATE_ROW にしない', () => {
+    expect(validateExtracted(result(dup(null)), {})).toBeNull()
+  })
+
+  it('screenName が空文字の同一行も DUPLICATE_ROW にしない', () => {
+    expect(validateExtracted(result(dup('')), {})).toBeNull()
+  })
+
+  it('screenName を公開している劇場では従来どおり DUPLICATE_ROW（本物の異常）', () => {
+    expect(validateExtracted(result(dup('シアター１')), {})?.code).toBe('DUPLICATE_ROW')
+  })
+
+  it('スクリーン名が異なれば重複ではない（多スクリーン館の並行上映）', () => {
+    const rows = [
+      sc({ movieTitle: 'A', startTime: '17:30', screenName: 'シアター１' }),
+      sc({ movieTitle: 'A', startTime: '17:30', screenName: 'シアター２' }),
+    ]
+    expect(validateExtracted(result(rows), {})).toBeNull()
   })
 })

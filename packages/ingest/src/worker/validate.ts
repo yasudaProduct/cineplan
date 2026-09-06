@@ -135,9 +135,14 @@ export function validateExtracted(
   }
   // V5: 同一 (実効date, movieTitle, startTime, screen) の重複。
   // 多スクリーン館は同一作品・同時刻を別スクリーンで上映しうるため screen を含める（migration 0003）。
+  // screenName を公開していない劇場（空文字。例: 大阪ステーションシネマ）は、同一作品の
+  // 同時刻並行上映（ライブ・ビューイング等）と LLM の行重複を区別する情報が無く、正当な
+  // 2行が重複に見える。V7 と同じ理由でスキップし、その劇場群は V2 が主防御になる（ADR-0024）。
   const seen = new Set<string>()
   for (const sc of s) {
-    const key = `${sc.date ?? result.businessDate}|${sc.movieTitle}|${sc.startTime}|${sc.screenName ?? ''}`
+    const screen = sc.screenName ?? ''
+    if (screen === '') continue
+    const key = `${sc.date ?? result.businessDate}|${sc.movieTitle}|${sc.startTime}|${screen}`
     if (seen.has(key)) return { code: 'DUPLICATE_ROW', detail: `重複 ${key}` }
     seen.add(key)
   }

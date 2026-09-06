@@ -1,5 +1,24 @@
 import type { NormalizedScreening } from '@cinema/shared'
 import { newId } from '@cinema/shared'
+import { logInfo } from '../log'
+
+// screenings の UNIQUE (theater_id, business_date, movie_id, start_at, screen_name)
+// に対して同一キーになる行を畳む（先勝ち。ADR-0024・docs/spec/09 §4.1）。
+// スクリーン名を公開しない劇場では、同一作品の同時刻並行上映が区別できない同一キーになる
+// （実例: 大阪ステーションシネマ 2026-09-06「水曜どうでしょう祭UNITE2026」17:30×2枠）。
+// DB のスキーマ上それらは同一の上映であり、畳まずに INSERT すると UNIQUE 違反で
+// batch() 全体が落ちる＝洗い替えもレビュー承認も丸ごと失敗する。
+function dedupeByUniqueKey(rows: NormalizedScreening[]): NormalizedScreening[] {
+  const seen = new Set<string>()
+  const out: NormalizedScreening[] = []
+  for (const r of rows) {
+    const key = `${r.businessDate}|${r.movieId}|${r.startAt}|${r.screenName}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(r)
+  }
+  return out
+}
 
 function buildInsertStmt(
   db: D1Database,
@@ -39,14 +58,23 @@ export async function replaceScreenings(
   runId: string,
   rows: NormalizedScreening[],
 ): Promise<number> {
+  const unique = dedupeByUniqueKey(rows)
+  if (unique.length < rows.length) {
+    logInfo('write.dedup', {
+      theaterId,
+      runId,
+      collapsed: rows.length - unique.length,
+      of: rows.length,
+    })
+  }
   const stmts: D1PreparedStatement[] = [
     db
       .prepare(`DELETE FROM screenings WHERE theater_id = ? AND business_date = ?`)
       .bind(theaterId, businessDate),
-    ...rows.map((r) => buildInsertStmt(db, theaterId, businessDate, runId, r)),
+    ...unique.map((r) => buildInsertStmt(db, theaterId, businessDate, runId, r)),
   ]
   await db.batch(stmts)
-  return rows.length
+  return unique.length
 }
 
 function enumerateDates(fromIso: string, toIso: string): string[] {
@@ -77,8 +105,19 @@ export async function replaceScreeningsByDate(
   coverageFloor: string,
   skipDates: string[] = [],
 ): Promise<number> {
+  // UNIQUE 違反で batch() 全体が落ちるのを防ぐ（ADR-0024）。取込・再抽出・レビュー承認の
+  // 3経路すべてがこの関数を通るため、ここ1か所で塞ぐ。
+  const unique = dedupeByUniqueKey(rows)
+  if (unique.length < rows.length) {
+    logInfo('write.dedup', {
+      theaterId,
+      runId,
+      collapsed: rows.length - unique.length,
+      of: rows.length,
+    })
+  }
   const byDate = new Map<string, NormalizedScreening[]>()
-  for (const r of rows) {
+  for (const r of unique) {
     const list = byDate.get(r.businessDate)
     if (list) list.push(r)
     else byDate.set(r.businessDate, [r])

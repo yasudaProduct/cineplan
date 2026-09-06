@@ -221,6 +221,8 @@ export function normalizeStart(businessDate: string, hhmm: string): string {
 
 同一 `(theater_id, business_date)` を DELETE してから INSERT する。D1 は `batch()` で複数文をまとめて実行する（トランザクション的にアトミック）。
 
+**INSERT 前に UNIQUE キー `(theater_id, business_date, movie_id, start_at, screen_name)` で重複行を畳む（先勝ち。ADR-0024）。** スクリーン名を公開しない劇場では、同一作品の同時刻並行上映が同一キーになり区別できない（実例: 大阪ステーションシネマ 2026-09-06 の「水曜どうでしょう祭UNITE2026 ライブ・ビューイング」が 17:30 に2枠）。DB のスキーマ上それらは同一の上映であり、畳まずに INSERT すると **UNIQUE 違反で `batch()` 全体が失敗し、洗い替えも承認反映も丸ごと落ちる**。畳んだ件数は `write.dedup` ログに残す（急増はサイト側の変化か抽出崩れの兆候）。
+
 ```ts
 export async function replaceScreenings(
   db: D1Database,
@@ -408,8 +410,10 @@ export async function approveReview(db: D1Database, reviewId: string) {
 
   // 正規化 + movie 解決（通常パスと同一関数）
   const rows = await normalizeAndResolve(db, run.theater_id, payload);
-  await replaceScreenings(db, run.theater_id, payload.businessDate,
-                          rev.ingest_run_id, rows);   // ← 4.1 を再利用
+  // 実装は replaceScreeningsByDate（4.1 の複数日版）を使う。payload は単日とは限らない
+  // （text 日分割・複数日取得の payload は複数 business_date にまたがる）。
+  await replaceScreeningsByDate(db, run.theater_id, rev.ingest_run_id, rows,
+                                payload.businessDate);
 
   await db.batch([
     db.prepare(`UPDATE extraction_reviews SET status='approved', reviewed_at=?2 WHERE id=?1`)
