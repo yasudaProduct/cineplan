@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!--
+    cineplan ブランドマーク（利用者向けサイト）。
+    右上へ昇るフィルムストリップ＝「はしご鑑賞」。配色は OGP 画像（app/lib/og-image.ts）と
+    LP のアクセント amber-500 に合わせる（地 #18181b→#27272a / フィルム #f59e0b）。
+    管理サイトは同じ形の反転版（金地×濃色フィルム。packages/ingest/src/admin/components.tsx）。
+    形を変えるときは favicon.ico / apple-touch-icon.png も再生成する:
+      cd packages/web && node scripts/make-favicon.mjs
+  -->
+  <title>cineplan</title>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#18181b"/>
+      <stop offset="1" stop-color="#27272a"/>
+    </linearGradient>
+    <clipPath id="round"><rect width="64" height="64" rx="14"/></clipPath>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#tile)"/>
+  <g clip-path="url(#round)">
+    <g transform="rotate(-38 32 32)">
+      <rect x="-14" y="21" width="92" height="22" fill="#f59e0b"/>
+      <g fill="#18181b">
+        <rect x="-8" y="23.5" width="4.5" height="3.6" rx="1.1"/>
+        <rect x="2" y="23.5" width="4.5" height="3.6" rx="1.1"/>
+        <rect x="12" y="23.5" width="4.5" height="3.6" rx="1.1"/>
+        <rect x="22" y="23.5" width="4.5" height="3.6" rx="1.1"/>
+        <rect x="32" y="23.5" width="4.5" height="3.6" rx="1.1"/>
+        <rect x="42" y="23.5" width="4.5" height="3.6" rx="1.1"/>
+        <rect x="52" y="23.5" width="4.5" height="3.6" rx="1.1"/>
+        <rect x="62" y="23.5" width="4.5" height="3.6" rx="1.1"/>
+        <rect x="72" y="23.5" width="4.5" height="3.6" rx="1.1"/>
+        <rect x="-8" y="36.9" width="4.5" height="3.6" rx="1.1"/>
+        <rect x="2" y="36.9" width="4.5" height="3.6" rx="1.1"/>
+        <rect x="12" y="36.9" width="4.5" height="3.6" rx="1.1"/>
+        <rect x="22" y="36.9" width="4.5" height="3.6" rx="1.1"/>
+        <rect x="32" y="36.9" width="4.5" height="3.6" rx="1.1"/>
+        <rect x="42" y="36.9" width="4.5" height="3.6" rx="1.1"/>
+        <rect x="52" y="36.9" width="4.5" height="3.6" rx="1.1"/>
+        <rect x="62" y="36.9" width="4.5" height="3.6" rx="1.1"/>
+        <rect x="72" y="36.9" width="4.5" height="3.6" rx="1.1"/>
+      </g>
+    </g>
+  </g>
+</svg>

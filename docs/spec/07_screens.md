@@ -1,6 +1,6 @@
 # 画面設計 — Web / 管理サイト
 
-- Version: 0.2（§1.3 作品選択 UI を詳細設定外のリスト形式へ変更・§1.4 タイムラインの表示方針を追記）
+- Version: 0.3（§4 ブランドマーク・ファビコンを追加）
 - 粒度: ワイヤーフレーム（テキスト）+ 画面遷移 + 状態定義。ビジュアルデザインは実装時に frontend-design の原則に従い決定してよいが、**画面の構成要素と遷移は本ドキュメントを正とする**。
 
 ## 1. Web（利用者向け）
@@ -155,3 +155,21 @@ LP (/)
 - 管理サイトは ingest パッケージ内に Hono + JSX（SSR のみ、クライアント JS 最小）で同居。凝った SPA にしない。
 - Web は React 系。**React Router v8（旧 Remix）+ Cloudflare Workers で確定**（ADR-0013・P3-1）。API クライアントと zod 型は packages/shared から import し、モバイルアプリ（Expo）に将来流用する。
 - アイコン・絵文字は本ワイヤー中の記号は意味の指示であり、実装ではアイコンフォント等に置換してよい。
+
+## 4. ブランドマーク・ファビコン（Web / 管理サイト共通）
+
+マークは**右上へ昇るフィルムストリップ**（＝はしご鑑賞）。角丸タイルに 38° のフィルムを全面で通す1形のみで、
+サイズ違い・サイト違いは**配色だけ**を変える。16px でも帯として読めることを優先し、要素を足さない。
+
+| | 地 | フィルム | 実体 |
+|---|---|---|---|
+| Web（利用者向け） | `#18181b`→`#27272a` | `#f59e0b`（LP のアクセント amber-500・OGP 画像と同色） | `packages/web/public/favicon.svg` |
+| 管理サイト | `#e0c060`（ヘッダのアクセント色） | `#23231f`（ヘッダ地） | `packages/ingest/src/admin/components.tsx` に data URI で埋め込み |
+
+- 管理サイトを**反転配色**にするのは、タブに両サイトが並んだときに一目で見分けるため。
+- Web は原本の SVG から派生ファイルを生成してコミットする（`cd packages/web && node scripts/make-favicon.mjs`）。
+  - `favicon.ico` … 16/32/48px の PNG を格納した ICO。SVG 非対応ブラウザとブラウザが暗黙に GET する `/favicon.ico` 用。
+  - `apple-touch-icon.png` … 180px。iOS が自前でマスクを被せるため**角丸なし・不透明**で出す。
+  - `root.tsx` の `<head>` から上記3ファイルを参照する。
+- 管理サイトは ingest Worker が静的アセットを持たない（`wrangler.toml` に assets 設定なし）ため、SVG を data URI で
+  `<head>` に埋め込む（追加リクエストなし・Cloudflare Access の影響も受けない）。

@@ -118,6 +118,13 @@ cinema-hashigo/                          # リポジトリルート
 │       ├── vite.config.ts               # @cloudflare/vite-plugin + reactRouter + tailwindcss
 │       ├── react-router.config.ts       # ssr: true（P5-2 の OGP に必要）
 │       ├── tsconfig*.json               # テンプレート準拠（project references・typegen 都合で base 非継承）
+│       ├── public/                      # 静的アセット（ビルドで build/client/ へ。ルート直下で配信）
+│       │   ├── favicon.svg              # ブランドマーク原本（07 §4。手で編集するのはこれだけ）
+│       │   ├── favicon.ico              # 16/32/48px（make-favicon.mjs の生成物・コミットする）
+│       │   └── apple-touch-icon.png     # 180px・角丸なし（同上）
+│       ├── scripts/                     # 生成物をコミットする手動スクリプト（CI では実行しない）
+│       │   ├── make-og-font.mjs         # OGP 用サブセットフォント生成（app/assets/og-font.ttf）
+│       │   └── make-favicon.mjs         # favicon.svg → favicon.ico / apple-touch-icon.png
 │       ├── workers/
 │       │   └── app.ts                   # Worker エントリ（createRequestHandler）
 │       └── app/

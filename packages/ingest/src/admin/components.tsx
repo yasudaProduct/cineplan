@@ -47,6 +47,27 @@ code { background: #eee; padding: 1px 4px; border-radius: 3px; font-size: 12px; 
 .actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0; align-items: center; }
 `
 
+// 管理サイトのファビコン（docs/spec/07 §4）。利用者向けサイトのマーク
+// （packages/web/public/favicon.svg）と同じ形の**反転版**＝金地に濃色のフィルムストリップ。
+// タブに両サイトを並べたときに一目で見分けられるようにするための色違い。
+// ingest Worker は静的アセットを持たない（wrangler.toml に assets なし）ため data URI で埋め込む。
+const SPROCKETS = [-8, 2, 12, 22, 32, 42, 52, 62, 72]
+  .flatMap((x) =>
+    [23.5, 36.9].map((y) => `<rect x="${x}" y="${y}" width="4.5" height="3.6" rx="1.1"/>`),
+  )
+  .join('')
+const FAVICON =
+  'data:image/svg+xml,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
+      '<defs><clipPath id="r"><rect width="64" height="64" rx="14"/></clipPath></defs>' +
+      '<rect width="64" height="64" rx="14" fill="#e0c060"/>' +
+      '<g clip-path="url(#r)"><g transform="rotate(-38 32 32)">' +
+      '<rect x="-14" y="21" width="92" height="22" fill="#23231f"/>' +
+      `<g fill="#e0c060">${SPROCKETS}</g>` +
+      '</g></g></svg>',
+  )
+
 export function Layout(props: { title: string; active: string; env: string; children?: Child }) {
   const nav = [
     ['/admin', 'ダッシュボード', 'dashboard'],
@@ -61,6 +82,7 @@ export function Layout(props: { title: string; active: string; env: string; chil
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="robots" content="noindex" />
+        <link rel="icon" type="image/svg+xml" href={FAVICON} />
         <title>{props.title} — cineplan admin</title>
         <style>{CSS}</style>
       </head>
